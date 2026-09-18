@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#2563eb" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded squircle -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)"/>
+  <rect x="8" y="8" width="496" height="496" rx="120" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="4"/>
+
+  <!-- Printer Base Body -->
+  <g filter="url(#glow)">
+    <!-- Paper feed at top -->
+    <path d="M160 80 L352 80 C360 80 368 88 368 96 L368 180 L144 180 L144 96 C144 88 152 80 160 80 Z" fill="#ffffff" opacity="0.95"/>
+    <line x1="176" y1="115" x2="336" y2="115" stroke="#cbd5e1" stroke-width="6" stroke-linecap="round"/>
+    <line x1="176" y1="140" x2="290" y2="140" stroke="#cbd5e1" stroke-width="6" stroke-linecap="round"/>
+
+    <!-- Printer Main Housing -->
+    <rect x="96" y="170" width="320" height="170" rx="28" fill="url(#blueGrad)"/>
+    <rect x="120" y="210" width="272" height="24" rx="12" fill="#0f172a" opacity="0.4"/>
+
+    <!-- Status LED & Button -->
+    <circle cx="140" cy="285" r="10" fill="url(#accentGrad)"/>
+    <rect x="170" y="277" width="48" height="16" rx="8" fill="rgba(255,255,255,0.3)"/>
+
+    <!-- Printed Paper Output -->
+    <path d="M144 260 L368 260 L368 400 C368 412 358 422 346 422 L166 422 C154 422 144 412 144 400 Z" fill="#ffffff"/>
+    <line x1="176" y1="300" x2="336" y2="300" stroke="#94a3b8" stroke-width="8" stroke-linecap="round"/>
+    <line x1="176" y1="335" x2="336" y2="335" stroke="#94a3b8" stroke-width="8" stroke-linecap="round"/>
+    <line x1="176" y1="370" x2="270" y2="370" stroke="#10b981" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>

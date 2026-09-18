@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="El Tato">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#ffffff">
+  
+  <title>El Tato — Impresiones</title>
+  
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="vendor/pdfjs/pdf.min.js"></script>
+</head>
+<body>
+
+  <!-- Alerta de desconexión -->
+  <div id="offlineBar" class="offline-bar hidden">
+    <span>Sin conexión al servidor local</span>
+  </div>
+
+  <!-- Header Superior -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-avatar">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9"></polyline>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+          <rect x="6" y="14" width="12" height="8"></rect>
+        </svg>
+      </div>
+      <div class="brand-info">
+        <span class="brand-name">El Tato Impresiones</span>
+        <div class="status-chip">
+          <span class="status-dot connecting" id="statusDot"></span>
+          <span class="status-label" id="statusBadge">Conectando...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-tools">
+      <!-- Botón Historial -->
+      <button type="button" class="btn-tool" id="btnOpenHistory" aria-label="Ver historial" title="Historial">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        <span class="btn-tool-label">Historial</span>
+      </button>
+
+      <!-- Botón Configuración -->
+      <button type="button" class="btn-tool" id="btnOpenSettings" aria-label="Configurar tarifas" title="Tarifas y Red">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- PANTALLA PRINCIPAL CON ÁREA DE AVISOS FIJA (CERO DESPLAZAMIENTO) -->
+  <main class="app-viewport">
+
+    <!-- ENCABEZADO MOSTRADOR Y AVISOS FIJOS (DEBAJO DE MOSTRADOR, CERO DESPLAZAMIENTO) -->
+    <div class="top-announcements">
+      <div class="kiosk-tagline" id="kioskTagline">MOSTRADOR • IMPRESIONES AL INSTANTE</div>
+      <div class="inline-notice-slot" id="noticeSlot">
+        <div class="inline-alert hidden" id="inlineAlert" role="alert">
+          <span class="alert-icon-box" id="alertIcon"></span>
+          <span class="alert-text-box" id="alertMessage"></span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- PASO 1: ELEGIR ARCHIVO -->
+    <section class="step-card card-file" id="uploadPanel">
+      <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.rtf,.odt,.txt,image/*" multiple class="visually-hidden">
+
+      <!-- Dropzone con botón grande abajo -->
+      <div class="drop-zone" id="dropZone" role="button" tabindex="0">
+        <div class="drop-header-row">
+          <div class="drop-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+          </div>
+          <div class="drop-text">
+            <div class="step-badge-row">
+              <span class="step-badge badge-step-1">Paso 1</span>
+              <strong class="drop-title" id="uploadTitle">Elegir Archivo</strong>
+            </div>
+            <span class="drop-sub">PDF, Word o fotos recibidas por WhatsApp</span>
+          </div>
+        </div>
+
+        <!-- Botón Grande de Carga Abajo -->
+        <button type="button" class="btn-file-huge" id="btnSelectFileTrigger">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <span>ELEGIR ARCHIVO AQUÍ</span>
+        </button>
+      </div>
+
+      <!-- Detalle de archivo cargado -->
+      <div class="file-loaded-row hidden" id="fileLoadedInfo">
+        <div class="file-type-pill" id="fileTypeBadge">PDF</div>
+        <div class="file-meta">
+          <div class="step-badge-row">
+            <span class="step-badge badge-step-1">Paso 1</span>
+            <span class="file-name" id="fileName">documento.pdf</span>
+          </div>
+          <div class="file-stats">
+            <span class="pill-pages" id="filePages">1 pág</span>
+            <button type="button" class="btn-pages-filter hidden" id="btnOpenPageSelector" title="Ver miniaturas y elegir hojas">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <span>Elegir páginas</span>
+            </button>
+            <span class="pill-size" id="fileSize"></span>
+          </div>
+        </div>
+        <button type="button" class="btn-change-file" id="btnChangeFile" aria-label="Cambiar archivo">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+          </svg>
+          <span>Cambiar</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- PASO 2: COLOR -->
+    <section class="step-card card-color">
+      <div class="step-header">
+        <span class="step-badge badge-step-2">Paso 2</span>
+        <h2 class="step-heading">Color de Impresión</h2>
+      </div>
+      <div class="button-pair" role="group" aria-label="Modo de color">
+        <button type="button" class="choice-btn choice-bw active" id="btnBw" data-color="false">
+          <div class="choice-icon bw-icon"></div>
+          <span class="choice-title">Blanco y negro</span>
+        </button>
+        <button type="button" class="choice-btn choice-color" id="btnColor" data-color="true">
+          <div class="choice-icon color-icon"></div>
+          <span class="choice-title">A color</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- PASO 3: CARAS -->
+    <section class="step-card card-sides">
+      <div class="step-header">
+        <span class="step-badge badge-step-3">Paso 3</span>
+        <h2 class="step-heading">Caras de la Hoja</h2>
+      </div>
+      <div class="button-pair" role="group" aria-label="Caras de impresión">
+        <button type="button" class="choice-btn choice-simplex active" id="btnSimplex" data-duplex="false">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="side-svg">
+            <rect x="5" y="3" width="14" height="18" rx="2"></rect>
+            <line x1="9" y1="8" x2="15" y2="8"></line>
+            <line x1="9" y1="12" x2="13" y2="12"></line>
+          </svg>
+          <span class="choice-title">Simple</span>
+        </button>
+        <button type="button" class="choice-btn choice-duplex" id="btnDuplex" data-duplex="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="side-svg">
+            <rect x="7" y="5" width="14" height="16" rx="2"></rect>
+            <path d="M4 17V3a2 2 0 0 1 2-2h11"></path>
+          </svg>
+          <span class="choice-title">Doble faz</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- PASO 4: TOTAL Y COBRAR -->
+    <section class="step-card card-checkout" id="checkoutCard">
+      <div class="checkout-display">
+        <div class="checkout-header-row">
+          <span class="step-badge badge-step-4">Paso 4</span>
+          <span class="checkout-label">TOTAL A COBRAR</span>
+
+          <!-- Selector de Copias Minimalista -->
+          <div class="copies-stepper-row" id="copiesRow">
+            <span class="copies-title">Copias:</span>
+            <div class="stepper-box">
+              <button type="button" class="btn-stepper" id="btnDecCopies" aria-label="Menos copias">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </button>
+              <span class="copies-val" id="copiesDisplay">1</span>
+              <button type="button" class="btn-stepper" id="btnIncCopies" aria-label="Más copias">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="checkout-price-row">
+          <span class="currency-sign">$</span>
+          <span class="price-big" id="priceAmount">0</span>
+        </div>
+        <span class="checkout-desc" id="priceDetails">Cargue un archivo para cotizar</span>
+      </div>
+
+      <div class="checkout-actions">
+        <button type="button" class="btn-main-print is-idle" id="btnApprovePrint">
+          <span class="spinner hidden" id="printSpinner"></span>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9"></polyline>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+            <rect x="6" y="14" width="12" height="8"></rect>
+          </svg>
+          <span id="btnApprovePrintText">COBRAR E IMPRIMIR</span>
+        </button>
+        <button type="button" class="btn-discard is-idle" id="btnCancelJob" aria-label="Descartar archivo" title="Descartar">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MENÚ LATERAL: HISTORIAL -->
+  <div class="drawer-backdrop hidden" id="historyDrawer" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+    <aside class="drawer-panel">
+      <div class="drawer-header">
+        <div class="drawer-title-wrap">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          <h2 class="drawer-title" id="historyTitle">Historial de Turno</h2>
+        </div>
+        <div class="drawer-actions">
+          <button type="button" class="btn-icon" id="btnRefreshJobs" aria-label="Actualizar">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+          </button>
+          <button type="button" class="btn-icon" id="btnCloseHistory" aria-label="Cerrar">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="drawer-body" id="jobsList">
+        <div class="empty-jobs">No hay impresiones en este turno</div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- MODAL: CONFIGURACIÓN -->
+  <div class="modal-backdrop hidden" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 class="modal-title" id="settingsTitle">Tarifas y Conexión</h2>
+        <button type="button" class="btn-icon" id="btnCloseSettings" aria-label="Cerrar">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <form id="pricesForm" class="prices-form">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="inputBwSimplex">B&N Simple</label>
+              <div class="input-wrap">
+                <span>$</span>
+                <input type="number" id="inputBwSimplex" min="0" step="10" inputmode="numeric" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="inputBwDuplex">B&N Doble Faz</label>
+              <div class="input-wrap">
+                <span>$</span>
+                <input type="number" id="inputBwDuplex" min="0" step="10" inputmode="numeric" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="inputColorSimplex">Color Simple</label>
+              <div class="input-wrap">
+                <span>$</span>
+                <input type="number" id="inputColorSimplex" min="0" step="10" inputmode="numeric" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="inputColorDuplex">Color Doble Faz</label>
+              <div class="input-wrap">
+                <span>$</span>
+                <input type="number" id="inputColorDuplex" min="0" step="10" inputmode="numeric" required>
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="btn-save-tariffs">Guardar Nuevas Tarifas</button>
+        </form>
+
+        <div class="ips-section">
+          <label>Acceso desde otros celulares:</label>
+          <div id="networkIpsList" class="ips-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: GUÍA DÚPLEX EPSON L3560 -->
+  <div class="modal-backdrop hidden" id="duplexModal" role="dialog" aria-modal="true" aria-labelledby="duplexTitle">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 class="modal-title" id="duplexTitle">Dar vuelta las hojas</h2>
+      </div>
+      <div class="modal-body">
+        <div class="duplex-alert">
+          Salieron las páginas impares en la bandeja de abajo.
+        </div>
+          <div class="duplex-steps">
+            <div class="duplex-step-card">
+              <span class="step-circle">1</span>
+              <p>Tomá la pila de la salida de abajo tal como cayó (sin desordenar las hojas).</p>
+            </div>
+            <div class="duplex-step-card highlight">
+              <span class="step-circle">2</span>
+              <p><strong>Girá la pila como la hoja de un libro (de izquierda a derecha):</strong> la cara en blanco debe mirar hacia vos (al frente).</p>
+            </div>
+            <div class="duplex-step-card">
+              <span class="step-circle">3</span>
+              <p>Colocala en la bandeja trasera vertical y confirmá abajo.</p>
+            </div>
+          </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-modal-confirm" id="btnConfirmDuplex">
+          <span class="spinner hidden" id="duplexSpinner"></span>
+          <span>Continuar con páginas pares</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: VISOR Y SELECTOR VISUAL DE PÁGINAS PDF -->
+  <div class="modal-backdrop hidden" id="pageSelectorModal" role="dialog" aria-modal="true" aria-labelledby="pageSelectorTitle">
+    <div class="modal-box modal-box-large">
+      <div class="modal-header">
+        <div class="modal-title-stack">
+          <h2 class="modal-title" id="pageSelectorTitle">Elegir páginas a imprimir</h2>
+          <span class="modal-subtitle">Tocá una hoja para marcarla o sacarla</span>
+        </div>
+        <button type="button" class="btn-icon" id="btnClosePageSelector" aria-label="Cerrar">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body modal-body-scrollable">
+        <div class="selector-actions-bar">
+          <div class="selector-btn-group">
+            <button type="button" class="btn-action-small" id="btnSelectAllPages">Marcar todas</button>
+            <button type="button" class="btn-action-small" id="btnDeselectAllPages">Desmarcar todas</button>
+          </div>
+          <span class="selected-counter" id="selectedPagesCountBadge">0 seleccionadas</span>
+        </div>
+
+        <!-- Contenedor dinámico de miniaturas de páginas -->
+        <div class="pages-grid" id="pagesGrid">
+          <div class="loading-pages">
+            <span class="spinner"></span>
+            <p>Generando vista previa...</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-modal-confirm" id="btnApplyPageSelection">
+          <span>Confirmar selección (<span id="btnApplyCount">0</span> págs)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: VISOR DE HOJA EN DETALLE (SENSACIÓN NATIVA) -->
+  <div class="modal-backdrop hidden" id="pageDetailModal" role="dialog" aria-modal="true" aria-labelledby="pageDetailTitle">
+    <div class="modal-box modal-box-fullscreen">
+      <div class="detail-header">
+        <button type="button" class="btn-detail-back" id="btnClosePageDetail" aria-label="Volver al selector">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          <span>Volver</span>
+        </button>
+        <span class="detail-page-title" id="pageDetailTitle">Página 1 de 1</span>
+        <button type="button" class="btn-detail-toggle is-included" id="btnToggleDetailSelection">
+          <span class="toggle-icon" id="detailToggleIcon">✓</span>
+          <span class="toggle-label" id="detailToggleText">Incluida</span>
+        </button>
+      </div>
+
+      <div class="detail-canvas-area" id="detailCanvasArea">
+        <div class="loading-pages hidden" id="detailLoading">
+          <span class="spinner"></span>
+          <p>Cargando página...</p>
+        </div>
+        <div class="detail-canvas-wrapper" id="detailCanvasWrapper">
+          <canvas id="detailCanvas"></canvas>
+        </div>
+      </div>
+
+      <div class="detail-footer">
+        <button type="button" class="btn-detail-nav" id="btnDetailPrev" aria-label="Página anterior">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          <span>Anterior</span>
+        </button>
+
+        <span class="detail-counter-pill" id="detailIndicator">1 / 1</span>
+
+        <button type="button" class="btn-detail-nav" id="btnDetailNext" aria-label="Página siguiente">
+          <span>Siguiente</span>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
