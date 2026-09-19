@@ -31,10 +31,7 @@ const elements = {
   inputColorDuplex: document.getElementById('inputColorDuplex'),
   selectPrinter: document.getElementById('selectPrinter'),
 
-  // Tema Claro / Oscuro
-  btnToggleTheme: document.getElementById('btnToggleTheme'),
-  themeToggleIcon: document.getElementById('themeToggleIcon'),
-  themeToggleLabel: document.getElementById('themeToggleLabel'),
+  // Tema Claro / Oscuro (solo en modal de configuración)
   btnThemeLight: document.getElementById('btnThemeLight'),
   btnThemeDark: document.getElementById('btnThemeDark'),
 
@@ -53,9 +50,7 @@ const elements = {
   // Área de Subida
   uploadPanel: document.getElementById('uploadPanel'),
   dropZone: document.getElementById('dropZone'),
-  btnTriggerDocs: document.getElementById('btnTriggerDocs'),
-  btnTriggerPhotos: document.getElementById('btnTriggerPhotos'),
-  btnCameraTrigger: document.getElementById('btnCameraTrigger'),
+  btnTriggerAll: document.getElementById('btnTriggerAll'),
   docInput: document.getElementById('docInput'),
   galleryInput: document.getElementById('galleryInput'),
   cameraInput: document.getElementById('cameraInput'),
@@ -400,31 +395,19 @@ function on(el, event, handler, options) {
 }
 
 function setupEventListeners() {
-  // Disparadores directos del DropZone (Paso 1)
-  on(elements.btnTriggerDocs, 'click', (e) => {
+  // Botón único de carga (Paso 1) — abre el selector nativo del sistema
+  on(elements.btnTriggerAll, 'click', (e) => {
     e.stopPropagation();
     triggerHaptic('tap');
     state.currentPhotoFiles = [];
-    if (elements.docInput) elements.docInput.click();
+    if (elements.allFilesInput) elements.allFilesInput.click();
   });
 
-  on(elements.btnTriggerPhotos, 'click', (e) => {
-    e.stopPropagation();
-    triggerHaptic('tap');
-    if (elements.galleryInput) elements.galleryInput.click();
-  });
-
-  on(elements.btnCameraTrigger, 'click', (e) => {
-    e.stopPropagation();
-    triggerHaptic('tap');
-    if (elements.cameraInput) elements.cameraInput.click();
-  });
-
-  // Clic en la zona general del dropzone (fuera de los botones de selección directa)
+  // Clic en zona del dropzone fuera del botón
   on(elements.dropZone, 'click', (e) => {
-    if (e.target.closest('.btn-upload-choice')) return;
+    if (e.target.closest('.btn-upload-single')) return;
     triggerHaptic('tap');
-    if (elements.docInput) elements.docInput.click();
+    if (elements.allFilesInput) elements.allFilesInput.click();
   });
 
   // Listeners de cambio en los inputs de archivos
@@ -666,13 +649,9 @@ function setupEventListeners() {
     }
   });
 
-  // Selector y conmutador de Tema Claro / Oscuro
+  // Selector de Tema Claro / Oscuro (solo en modal de configuración)
   on(elements.btnThemeLight, 'click', () => setTheme('light'));
   on(elements.btnThemeDark, 'click', () => setTheme('dark'));
-  on(elements.btnToggleTheme, 'click', () => {
-    const current = localStorage.getItem('app-theme') || 'light';
-    setTheme(current === 'dark' ? 'light' : 'dark');
-  });
 
   // Modal Dúplex continuar
   on(elements.btnConfirmDuplex, 'click', handleConfirmDuplex);

@@ -45,11 +45,6 @@
     </div>
 
     <div class="header-tools">
-      <!-- Botón Modo Oscuro -->
-      <button type="button" class="btn-tool" id="btnToggleTheme" aria-label="Cambiar tema" title="Modo Claro / Oscuro">
-        <span id="themeToggleIcon" style="font-size: 16px; line-height: 1;">☀️</span>
-        <span class="btn-tool-label" id="themeToggleLabel">Tema</span>
-      </button>
 
       <!-- Botón Historial -->
       <button type="button" class="btn-tool" id="btnOpenHistory" aria-label="Ver historial" title="Historial">
@@ -89,7 +84,7 @@
       <input type="file" id="docInput" accept=".pdf,.doc,.docx,.rtf,.odt,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/rtf,text/plain,text/rtf" multiple class="visually-hidden">
       <input type="file" id="galleryInput" accept="image/*" multiple class="visually-hidden">
       <input type="file" id="cameraInput" accept="image/*" capture="environment" class="visually-hidden">
-      <input type="file" id="allFilesInput" multiple class="visually-hidden">
+      <input type="file" id="allFilesInput" accept=".pdf,.doc,.docx,.rtf,.odt,.txt,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple class="visually-hidden">
       <input type="file" id="addGalleryInput" accept="image/*" multiple class="visually-hidden">
       <input type="file" id="addCameraInput" accept="image/*" capture="environment" class="visually-hidden">
 
@@ -111,41 +106,17 @@
           </div>
         </div>
 
-        <!-- 3 Botones de Selección Directa (evita el bloqueo de Android Photo Picker) -->
-        <div class="upload-options-grid">
-          <button type="button" class="btn-upload-choice btn-choice-docs" id="btnTriggerDocs" title="Abrir selector de documentos PDF o Word">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
+        <!-- Botón único de selección (nativo) -->
+        <div class="upload-options-grid upload-single">
+          <button type="button" class="btn-upload-single" id="btnTriggerAll" title="Elegir archivo para imprimir">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
             <div class="choice-labels">
-              <strong>DOCUMENTOS</strong>
-              <span>PDF o Word</span>
-            </div>
-          </button>
-
-          <button type="button" class="btn-upload-choice btn-choice-photos" id="btnTriggerPhotos" title="Abrir galería de fotos">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <circle cx="8.5" cy="8.5" r="1.5"></circle>
-              <polyline points="21 15 16 10 5 21"></polyline>
-            </svg>
-            <div class="choice-labels">
-              <strong>GALERÍA</strong>
-              <span>Fotos guardadas</span>
-            </div>
-          </button>
-
-          <button type="button" class="btn-upload-choice btn-choice-camera" id="btnCameraTrigger" title="Tomar foto con la cámara del celular">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-              <circle cx="12" cy="13" r="4"></circle>
-            </svg>
-            <div class="choice-labels">
-              <strong>CÁMARA</strong>
-              <span>Sacar foto</span>
+              <strong>ELEGIR ARCHIVO</strong>
+              <span>PDF, Word, fotos o cámara</span>
             </div>
           </button>
         </div>
