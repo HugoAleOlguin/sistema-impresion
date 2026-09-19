@@ -14,7 +14,11 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.text.format.Formatter;
+import android.view.Gravity;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
 import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
@@ -38,6 +42,8 @@ import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import com.google.android.material.bottomsheet.BottomSheetDialog;
+
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -59,6 +65,12 @@ public class MainActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "ElTatoPrefs";
     private static final String KEY_CACHED_IP = "cached_server_ip";
 
+    // Constantes para identificar qué lanzó el file picker
+    private static final int MODE_NONE = 0;
+    private static final int MODE_DOCUMENT = 1;
+    private static final int MODE_GALLERY = 2;
+    private static final int MODE_CAMERA = 3;
+
     private WebView webView;
     private SwipeRefreshLayout swipeRefresh;
     private LinearLayout loadingLayout;
@@ -74,50 +86,92 @@ public class MainActivity extends AppCompatActivity {
     private String currentActiveUrl = "";
     private ValueCallback<Uri[]> uploadMessageCallback;
     private Uri cameraImageUri;
+    private int currentPickerMode = MODE_NONE;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    // Launcher para selector de archivos / cámara
-    private final ActivityResultLauncher<Intent> fileChooserLauncher = registerForActivityResult(
+    // ── Launcher 1: Documentos (ACTION_OPEN_DOCUMENT) ──────────────────────────
+    private final ActivityResultLauncher<Intent> documentLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
                 if (uploadMessageCallback == null) return;
-                Uri[] results = null;
-                if (result.getResultCode() == RESULT_OK) {
+                Uri[] uris = null;
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                     Intent data = result.getData();
-                    if (data != null) {
-                        String dataString = data.getDataString();
-                        if (data.getClipData() != null) {
-                            final int count = data.getClipData().getItemCount();
-                            results = new Uri[count];
-                            for (int i = 0; i < count; i++) {
-                                results[i] = data.getClipData().getItemAt(i).getUri();
-                            }
-                        } else if (dataString != null) {
-                            results = new Uri[]{Uri.parse(dataString)};
+                    if (data.getClipData() != null) {
+                        int count = data.getClipData().getItemCount();
+                        uris = new Uri[count];
+                        for (int i = 0; i < count; i++) {
+                            uris[i] = data.getClipData().getItemAt(i).getUri();
                         }
-                    }
-                    if (results == null && cameraImageUri != null) {
-                        File cameraFile = new File(cameraImageUri.getPath());
-                        if (cameraFile.exists() || cameraImageUri.toString().startsWith("content://")) {
-                            results = new Uri[]{cameraImageUri};
-                        }
+                    } else if (data.getData() != null) {
+                        uris = new Uri[]{data.getData()};
                     }
                 }
-                uploadMessageCallback.onReceiveValue(results);
-                uploadMessageCallback = null;
+                deliverResult(uris);
             }
     );
 
-    // Launcher para permisos de cámara
+    // ── Launcher 2: Galería (ACTION_PICK / Photo Picker) ───────────────────────
+    private final ActivityResultLauncher<Intent> galleryLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (uploadMessageCallback == null) return;
+                Uri[] uris = null;
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    Intent data = result.getData();
+                    if (data.getClipData() != null) {
+                        int count = data.getClipData().getItemCount();
+                        uris = new Uri[count];
+                        for (int i = 0; i < count; i++) {
+                            uris[i] = data.getClipData().getItemAt(i).getUri();
+                        }
+                    } else if (data.getData() != null) {
+                        uris = new Uri[]{data.getData()};
+                    }
+                }
+                deliverResult(uris);
+            }
+    );
+
+    // ── Launcher 3: Cámara (ACTION_IMAGE_CAPTURE) ──────────────────────────────
+    private final ActivityResultLauncher<Intent> cameraLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (uploadMessageCallback == null) return;
+                Uri[] uris = null;
+                if (result.getResultCode() == RESULT_OK) {
+                    if (cameraImageUri != null) {
+                        uris = new Uri[]{cameraImageUri};
+                    } else if (result.getData() != null && result.getData().getData() != null) {
+                        uris = new Uri[]{result.getData().getData()};
+                    }
+                }
+                deliverResult(uris);
+            }
+    );
+
+    // ── Launcher: Permiso cámara ────────────────────────────────────────────────
     private final ActivityResultLauncher<String> cameraPermissionLauncher = registerForActivityResult(
             new ActivityResultContracts.RequestPermission(),
-            isGranted -> {
-                if (!isGranted) {
-                    Toast.makeText(this, "Se requiere permiso de cámara para tomar fotos", Toast.LENGTH_SHORT).show();
+            granted -> {
+                if (granted) {
+                    launchCamera();
+                } else {
+                    Toast.makeText(this, "Se requiere permiso de cámara", Toast.LENGTH_SHORT).show();
+                    deliverResult(null);
                 }
             }
     );
+
+    // ── Entrega el resultado al WebView ────────────────────────────────────────
+    private void deliverResult(Uri[] uris) {
+        if (uploadMessageCallback != null) {
+            uploadMessageCallback.onReceiveValue(uris);
+            uploadMessageCallback = null;
+        }
+        currentPickerMode = MODE_NONE;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -132,24 +186,190 @@ public class MainActivity extends AppCompatActivity {
         subStatusText = findViewById(R.id.subStatusText);
         retryButton = findViewById(R.id.retryButton);
 
+        // ── Deshabilitar SwipeRefresh: la app debe sentirse nativa, no recargarse ──
+        swipeRefresh.setEnabled(false);
+
         loadAppConfig();
         setupWebView();
 
-        swipeRefresh.setOnRefreshListener(() -> {
-            if (webView.getVisibility() == View.VISIBLE && !currentActiveUrl.isEmpty()) {
-                webView.reload();
-            } else {
-                resolveAndConnect();
-            }
-            swipeRefresh.setRefreshing(false);
-        });
-
         retryButton.setOnClickListener(v -> resolveAndConnect());
 
-        // Iniciar resolución inteligente de conexión
         resolveAndConnect();
     }
 
+    // ── BottomSheet nativo con 3 opciones claras ────────────────────────────────
+    private void showFilePickerBottomSheet() {
+        BottomSheetDialog sheet = new BottomSheetDialog(this, R.style.BottomSheetStyle);
+
+        // Construir el layout programáticamente (sin XML extra)
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(20), dp(20), dp(20), dp(32));
+        root.setBackgroundResource(android.R.color.transparent);
+
+        // Título
+        TextView title = new TextView(this);
+        title.setText("¿Qué querés imprimir?");
+        title.setTextSize(17f);
+        title.setTextColor(0xFF0F172A);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        title.setPadding(dp(4), 0, 0, dp(16));
+        root.addView(title);
+
+        // Botón DOCUMENTOS (PDF / Word)
+        Button btnDoc = makeSheetButton(
+                "📄  DOCUMENTOS  —  PDF o Word",
+                0xFFEFF6FF, 0xFF3B82F6, 0xFF1D4ED8);
+        btnDoc.setOnClickListener(v -> {
+            sheet.dismiss();
+            launchDocumentPicker();
+        });
+        root.addView(btnDoc);
+        root.addView(spacer(10));
+
+        // Botón GALERÍA
+        Button btnGallery = makeSheetButton(
+                "🖼  GALERÍA  —  Fotos del teléfono",
+                0xFFF0FDF4, 0xFF22C55E, 0xFF15803D);
+        btnGallery.setOnClickListener(v -> {
+            sheet.dismiss();
+            launchGalleryPicker();
+        });
+        root.addView(btnGallery);
+        root.addView(spacer(10));
+
+        // Botón CÁMARA
+        Button btnCamera = makeSheetButton(
+                "📷  CÁMARA  —  Sacar foto ahora",
+                0xFFFFF7ED, 0xFFF97316, 0xFFC2410C);
+        btnCamera.setOnClickListener(v -> {
+            sheet.dismiss();
+            requestCameraAndLaunch();
+        });
+        root.addView(btnCamera);
+        root.addView(spacer(8));
+
+        // Botón Cancelar (texto)
+        Button btnCancel = new Button(this);
+        btnCancel.setText("Cancelar");
+        btnCancel.setTextColor(0xFF64748B);
+        btnCancel.setTextSize(14f);
+        btnCancel.setAllCaps(false);
+        btnCancel.setBackgroundResource(android.R.color.transparent);
+        btnCancel.setOnClickListener(v -> {
+            sheet.dismiss();
+            deliverResult(null);
+        });
+        root.addView(btnCancel);
+
+        sheet.setOnDismissListener(dialog -> {
+            if (currentPickerMode == MODE_NONE && uploadMessageCallback != null) {
+                deliverResult(null);
+            }
+        });
+
+        sheet.setContentView(root);
+        sheet.show();
+    }
+
+    // ── Helper: crea botón de opción para el BottomSheet ──────────────────────
+    private Button makeSheetButton(String text, int bgColor, int borderColor, int textColor) {
+        Button btn = new Button(this);
+        btn.setText(text);
+        btn.setAllCaps(false);
+        btn.setTextSize(15f);
+        btn.setTextColor(textColor);
+        btn.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        btn.setPadding(dp(16), dp(14), dp(16), dp(14));
+
+        // Fondo con borde redondeado (programático)
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+        bg.setCornerRadius(dp(12));
+        bg.setColor(bgColor);
+        bg.setStroke(dp(2), borderColor);
+        btn.setBackground(bg);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        btn.setLayoutParams(lp);
+        return btn;
+    }
+
+    private View spacer(int heightDp) {
+        View v = new View(this);
+        v.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(heightDp)));
+        return v;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    // ── Lanzadores de cada modo ────────────────────────────────────────────────
+    private void launchDocumentPicker() {
+        currentPickerMode = MODE_DOCUMENT;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "application/pdf",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/rtf",
+                "text/plain"
+        });
+        documentLauncher.launch(intent);
+    }
+
+    private void launchGalleryPicker() {
+        currentPickerMode = MODE_GALLERY;
+        // Android 13+ tiene Photo Picker nativo (MediaStore.ACTION_PICK_IMAGES)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Intent intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
+            intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, 10);
+            galleryLauncher.launch(intent);
+        } else {
+            // Para Android <13: galería clásica con selección múltiple
+            Intent intent = new Intent(Intent.ACTION_PICK,
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+            intent.setType("image/*");
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            galleryLauncher.launch(intent);
+        }
+    }
+
+    private void requestCameraAndLaunch() {
+        currentPickerMode = MODE_CAMERA;
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED) {
+            launchCamera();
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA);
+        }
+    }
+
+    private void launchCamera() {
+        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        try {
+            String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+            File dir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+            File photo = File.createTempFile("IMG_" + stamp + "_", ".jpg", dir);
+            cameraImageUri = FileProvider.getUriForFile(
+                    this,
+                    getApplicationContext().getPackageName() + ".fileprovider",
+                    photo);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
+            cameraLauncher.launch(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "No se pudo abrir la cámara", Toast.LENGTH_SHORT).show();
+            deliverResult(null);
+        }
+    }
+
+    // ── Config ─────────────────────────────────────────────────────────────────
     private void loadAppConfig() {
         try {
             InputStream is = getAssets().open("app_config.json");
@@ -158,7 +378,6 @@ public class MainActivity extends AppCompatActivity {
             String line;
             while ((line = reader.readLine()) != null) sb.append(line);
             reader.close();
-
             JSONObject json = new JSONObject(sb.toString());
             gistId = json.optString("gistId", gistId);
             kioscoSecret = json.optString("kioscoSecret", kioscoSecret);
@@ -168,6 +387,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // ── WebView ─────────────────────────────────────────────────────────────────
     private void setupWebView() {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -203,10 +423,10 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                if (url.startsWith("whatsapp://") || url.startsWith("https://wa.me/") || url.startsWith("https://api.whatsapp.com/")) {
+                if (url.startsWith("whatsapp://") || url.startsWith("https://wa.me/")
+                        || url.startsWith("https://api.whatsapp.com/")) {
                     try {
-                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                        startActivity(intent);
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
                         return true;
                     } catch (Exception ignored) {}
                 }
@@ -220,8 +440,8 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     for (String resource : request.getResources()) {
                         if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
-                            if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA)
-                                    == PackageManager.PERMISSION_GRANTED) {
+                            if (ContextCompat.checkSelfPermission(MainActivity.this,
+                                    Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                                 request.grant(request.getResources());
                             } else {
                                 cameraPermissionLauncher.launch(Manifest.permission.CAMERA);
@@ -234,58 +454,23 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
-            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback,
-                                              FileChooserParams fileChooserParams) {
+            public boolean onShowFileChooser(WebView wv, ValueCallback<Uri[]> filePathCallback,
+                                              FileChooserParams params) {
+                // Cancelar cualquier callback anterior sin entregar resultado
                 if (uploadMessageCallback != null) {
                     uploadMessageCallback.onReceiveValue(null);
+                    uploadMessageCallback = null;
                 }
                 uploadMessageCallback = filePathCallback;
 
-                Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-                File photoFile = null;
-                try {
-                    String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-                    File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-                    photoFile = File.createTempFile("JPEG_" + timeStamp + "_", ".jpg", storageDir);
-                    cameraImageUri = FileProvider.getUriForFile(
-                            MainActivity.this,
-                            getApplicationContext().getPackageName() + ".fileprovider",
-                            photoFile
-                    );
-                    takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
-                } catch (Exception ex) {
-                    takePictureIntent = null;
-                }
-
-                Intent contentSelectionIntent = new Intent(Intent.ACTION_GET_CONTENT);
-                contentSelectionIntent.addCategory(Intent.CATEGORY_OPENABLE);
-                contentSelectionIntent.setType("*/*");
-                contentSelectionIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-                contentSelectionIntent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
-                        "application/pdf",
-                        "image/*",
-                        "application/msword",
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                });
-
-                Intent[] intentArray;
-                if (takePictureIntent != null) {
-                    intentArray = new Intent[]{takePictureIntent};
-                } else {
-                    intentArray = new Intent[0];
-                }
-
-                Intent chooserIntent = new Intent(Intent.ACTION_CHOOSER);
-                chooserIntent.putExtra(Intent.EXTRA_INTENT, contentSelectionIntent);
-                chooserIntent.putExtra(Intent.EXTRA_TITLE, "Seleccionar documento o foto");
-                chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, intentArray);
-
-                fileChooserLauncher.launch(chooserIntent);
+                // Mostrar el BottomSheet nativo en lugar del chooser genérico del sistema
+                runOnUiThread(() -> showFilePickerBottomSheet());
                 return true;
             }
         });
     }
 
+    // ── Resolución de conexión ─────────────────────────────────────────────────
     private void resolveAndConnect() {
         runOnUiThread(() -> {
             webView.setVisibility(View.GONE);
@@ -297,14 +482,12 @@ public class MainActivity extends AppCompatActivity {
         });
 
         executor.execute(() -> {
-            // 1. Probar red local Wi-Fi primero
-            String localSuccessUrl = probeLocalLan();
-            if (localSuccessUrl != null) {
-                runOnUiThread(() -> loadUrlInApp(localSuccessUrl, "Conectado por Wi-Fi Local (Alta Velocidad)"));
+            String localUrl = probeLocalLan();
+            if (localUrl != null) {
+                runOnUiThread(() -> loadUrlInApp(localUrl, "Conectado por Wi-Fi Local (Alta Velocidad)"));
                 return;
             }
 
-            // 2. Si no responde en Wi-Fi local, buscar en GitHub Gist (Modo Datos Móviles 4G / Túnel)
             runOnUiThread(() -> subStatusText.setText("Conectando mediante túnel remoto (Datos Móviles)..."));
             String remoteUrl = fetchRemoteUrlFromGitHub();
             if (remoteUrl != null && !remoteUrl.isEmpty()) {
@@ -312,20 +495,16 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            // 3. Si ambos fallan
             runOnUiThread(() -> showErrorState(getString(R.string.offline_msg)));
         });
     }
 
     private String probeLocalLan() {
         List<String> candidates = new ArrayList<>();
-
-        // Revisar IP cacheada previamente
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         String cachedIp = prefs.getString(KEY_CACHED_IP, null);
         if (cachedIp != null) candidates.add(cachedIp);
 
-        // Si está en Wi-Fi, calcular subred local
         ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
         boolean isWiFi = activeNetwork != null && activeNetwork.getType() == ConnectivityManager.TYPE_WIFI;
@@ -337,7 +516,6 @@ public class MainActivity extends AppCompatActivity {
                 String ipString = Formatter.formatIpAddress(ipAddress);
                 if (ipString != null && ipString.contains(".")) {
                     String prefix = ipString.substring(0, ipString.lastIndexOf('.') + 1);
-                    // Probar gateway habitual .1 y la IP de la máquina detectada .193
                     candidates.add(prefix + "193");
                     candidates.add(prefix + "100");
                     candidates.add(prefix + "1");
@@ -396,9 +574,7 @@ public class MainActivity extends AppCompatActivity {
                     String contentStr = fileObj.getString("content");
                     JSONObject tunnelData = new JSONObject(contentStr);
                     String tunnelUrl = tunnelData.optString("url", "");
-                    if (tunnelUrl.startsWith("https://")) {
-                        return tunnelUrl;
-                    }
+                    if (tunnelUrl.startsWith("https://")) return tunnelUrl;
                 }
             }
             conn.disconnect();
@@ -412,17 +588,14 @@ public class MainActivity extends AppCompatActivity {
         currentActiveUrl = targetUrl;
         subStatusText.setText(connectionType);
 
-        // Inyectar cookie de autenticación
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setCookie(targetUrl, "kiosco_auth=" + kioscoSecret + "; Path=/; SameSite=Lax");
         cookieManager.flush();
 
-        // Si es URL remota de Cloudflare, concatenar ?token=
         String finalUrl = targetUrl;
         if (targetUrl.contains(".trycloudflare.com")) {
             finalUrl = targetUrl + "/?token=" + kioscoSecret;
         }
-
         webView.loadUrl(finalUrl);
     }
 
