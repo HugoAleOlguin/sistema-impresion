@@ -436,24 +436,6 @@ function setupEventListeners() {
     if (elements.addGalleryInput) elements.addGalleryInput.click();
   });
 
-  on(elements.addPhotoModal, 'click', (e) => {
-    if (e.target === elements.addPhotoModal) {
-      elements.addPhotoModal.classList.add('hidden');
-    }
-  });
-
-  on(elements.btnChoiceCamera, 'click', () => {
-    triggerHaptic('tap');
-    if (elements.addPhotoModal) elements.addPhotoModal.classList.add('hidden');
-    if (elements.addCameraInput) elements.addCameraInput.click();
-  });
-
-  on(elements.btnChoiceGallery, 'click', () => {
-    triggerHaptic('tap');
-    if (elements.addPhotoModal) elements.addPhotoModal.classList.add('hidden');
-    if (elements.addGalleryInput) elements.addGalleryInput.click();
-  });
-
   on(elements.addCameraInput, 'change', handleAddPhotosSelected);
   on(elements.addGalleryInput, 'change', handleAddPhotosSelected);
 
@@ -1682,8 +1664,9 @@ async function openPageSelector() {
         </div>
       `;
       addCard.addEventListener('click', () => {
+        triggerHaptic('tap');
         elements.pageSelectorModal.classList.add('hidden');
-        elements.addPhotoModal.classList.remove('hidden');
+        if (elements.addGalleryInput) elements.addGalleryInput.click();
       });
       elements.pagesGrid.appendChild(addCard);
     }

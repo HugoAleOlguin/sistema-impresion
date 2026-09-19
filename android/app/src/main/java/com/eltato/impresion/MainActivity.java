@@ -197,8 +197,8 @@ public class MainActivity extends AppCompatActivity {
         resolveAndConnect();
     }
 
-    // ── BottomSheet nativo con 3 opciones claras ────────────────────────────────
-    private void showFilePickerBottomSheet() {
+    // ── BottomSheet nativo con opciones dinámicas ─────────────────────────────
+    private void showFilePickerBottomSheet(boolean isImageOnly) {
         BottomSheetDialog sheet = new BottomSheetDialog(this, R.style.BottomSheetStyle);
 
         // Construir el layout programáticamente (sin XML extra)
@@ -209,23 +209,25 @@ public class MainActivity extends AppCompatActivity {
 
         // Título
         TextView title = new TextView(this);
-        title.setText("¿Qué querés imprimir?");
+        title.setText(isImageOnly ? "Sumar otra foto" : "¿Qué querés imprimir?");
         title.setTextSize(17f);
         title.setTextColor(0xFF0F172A);
         title.setTypeface(null, android.graphics.Typeface.BOLD);
         title.setPadding(dp(4), 0, 0, dp(16));
         root.addView(title);
 
-        // Botón DOCUMENTOS (PDF / Word)
-        Button btnDoc = makeSheetButton(
-                "📄  DOCUMENTOS  —  PDF o Word",
-                0xFFEFF6FF, 0xFF3B82F6, 0xFF1D4ED8);
-        btnDoc.setOnClickListener(v -> {
-            sheet.dismiss();
-            launchDocumentPicker();
-        });
-        root.addView(btnDoc);
-        root.addView(spacer(10));
+        // Botón DOCUMENTOS (PDF / Word) — sólo visible si no es exclusivo de imágenes
+        if (!isImageOnly) {
+            Button btnDoc = makeSheetButton(
+                    "📄  DOCUMENTOS  —  PDF o Word",
+                    0xFFEFF6FF, 0xFF3B82F6, 0xFF1D4ED8);
+            btnDoc.setOnClickListener(v -> {
+                sheet.dismiss();
+                launchDocumentPicker();
+            });
+            root.addView(btnDoc);
+            root.addView(spacer(10));
+        }
 
         // Botón GALERÍA
         Button btnGallery = makeSheetButton(
@@ -475,8 +477,30 @@ public class MainActivity extends AppCompatActivity {
                 }
                 uploadMessageCallback = filePathCallback;
 
-                // Mostrar el BottomSheet nativo en lugar del chooser genérico del sistema
-                runOnUiThread(() -> showFilePickerBottomSheet());
+                boolean isImageOnly = false;
+                if (params != null && params.getAcceptTypes() != null) {
+                    String[] types = params.getAcceptTypes();
+                    if (types.length > 0) {
+                        boolean hasDocs = false;
+                        boolean hasImages = false;
+                        for (String t : types) {
+                            if (t == null) continue;
+                            String lower = t.toLowerCase();
+                            if (lower.contains("pdf") || lower.contains("word") || lower.contains("doc") || lower.contains("*/*")) {
+                                hasDocs = true;
+                            }
+                            if (lower.contains("image")) {
+                                hasImages = true;
+                            }
+                        }
+                        if (hasImages && !hasDocs) {
+                            isImageOnly = true;
+                        }
+                    }
+                }
+
+                final boolean onlyPhotos = isImageOnly;
+                runOnUiThread(() -> showFilePickerBottomSheet(onlyPhotos));
                 return true;
             }
         });
