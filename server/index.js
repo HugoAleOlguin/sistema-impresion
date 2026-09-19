@@ -10,9 +10,12 @@ const { calculateQuote } = require('./services/pricingService');
 const { inspectDocument, convertImageToA4Pdf, combineImagesToA4Pdf } = require('./services/documentService');
 const { processJobPrint, continueDuplexPrint } = require('./services/printerService');
 const queueService = require('./services/queueService');
+const { tunnelSecurityMiddleware } = require('./services/securityService');
+const { getTunnelStatus, startTunnel, loadTunnelConfig } = require('./services/tunnelService');
 
 const app = express();
 app.use(cors());
+app.use(tunnelSecurityMiddleware);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -66,6 +69,11 @@ app.get('/api/config', (req, res) => {
     localIps: getLocalIpAddresses(),
     port: PORT
   });
+});
+
+// 1b. Obtener estado del túnel remoto Cloudflare y GitHub
+app.get('/api/tunnel/status', (req, res) => {
+  res.json(getTunnelStatus());
 });
 
 // 2. Actualizar configuración de precios (permite valores específicos de 0 a infinito sin redondeos)
@@ -308,5 +316,11 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`   👉 http://<IP-DE-TU-PC>:${PORT}`);
   }
   console.log('====================================================');
+
+  const tunnelCfg = loadTunnelConfig();
+  if (tunnelCfg.autoStartTunnel) {
+    console.log('🌐 Auto-arranque de túnel Cloudflare habilitado...');
+    startTunnel({ localPort: PORT });
+  }
 });
 

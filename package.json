@@ -8,8 +8,11 @@
   },
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/test-system.js",
-    "test:hardware": "node test/test-hardware-print.js"
+    "test": "node test/test-system.js && node test/test-tunnel-security.js",
+    "test:tunnel": "node test/test-tunnel-security.js",
+    "test:hardware": "node test/test-hardware-print.js",
+    "tunnel": "node scripts/tunnel_manager.js",
+    "config:github": "node scripts/configurar_github.js"
   },
   "keywords": [],
   "type": "commonjs",

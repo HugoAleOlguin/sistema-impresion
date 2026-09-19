@@ -62,4 +62,10 @@ Este documento centraliza el estado actual, objetivos, restricciones de hardware
   - Creado `instalar-kiosco.bat` y `scripts/install.ps1`: verifica Node.js, instala dependencias, descarga SumatraPDF, configura Firewall, detecta la Epson y añade el servidor al Inicio de Windows (`Startup`) y crea acceso en el Escritorio.
   - Creado `desinstalar-autoinicio.bat`: permite desactivar el auto-arranque en cualquier momento.
   - Auto-detección dinámica de impresora Epson en cualquier PC en `server/config.js`.
+- [x] **Sincronización Remota y Túnel Permanente sin Dominios:**
+  - **Coordinador Dinámico vía GitHub Gist:** Sincroniza en tiempo real la URL temporal emitida por `cloudflared.exe` sin costo ni dominios pagos.
+  - **Seguridad y Privacidad Absoluta:** Implementado `tunnelSecurityMiddleware` en Express; peticiones locales (LAN/Wi-Fi) transparentes; peticiones externas vía Cloudflare protegidas mediante token secreto `X-Kiosco-Token` (403 Forbidden para extraños).
+  - **Asistente Interactivo de Configuración:** Creados `configurar_github.bat` y `scripts/configurar_github.js` para vincular el token de GitHub y crear el Gist automáticamente con 1 solo clic.
+  - **Gestor de Túnel:** Creados `iniciar-tunel.bat` y `scripts/tunnel_manager.js` para arranque manual o automático con detección y reconexión en vivo.
+
 
