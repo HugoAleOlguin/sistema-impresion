@@ -56,8 +56,13 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -111,63 +116,14 @@ public class MainActivity extends AppCompatActivity {
     private String githubToken = "";
     private boolean isDarkMode = false;
 
-    // ── Elementos compartidos desde WhatsApp / Galería (Share Intent) ──────────
-    private static class SharedItem {
-        String name;
-        String mimeType;
-        String base64Data;
-    }
-
-    private final List<SharedItem> pendingSharedItems = Collections.synchronizedList(new ArrayList<>());
+    // ── Archivos compartidos pendientes de subida directa (WhatsApp / Galería) ──
+    private final List<File> pendingSharedFiles = Collections.synchronizedList(new ArrayList<>());
+    private final AtomicBoolean isUploadingShared = new AtomicBoolean(false);
 
     public class WebAppInterface {
         @android.webkit.JavascriptInterface
         public void notifyTheme(String theme) {
             runOnUiThread(() -> isDarkMode = "dark".equalsIgnoreCase(theme));
-        }
-
-        @android.webkit.JavascriptInterface
-        public int getSharedFilesCount() {
-            synchronized (pendingSharedItems) {
-                return pendingSharedItems.size();
-            }
-        }
-
-        @android.webkit.JavascriptInterface
-        public String getSharedFileName(int index) {
-            synchronized (pendingSharedItems) {
-                if (index >= 0 && index < pendingSharedItems.size()) {
-                    return pendingSharedItems.get(index).name;
-                }
-                return "";
-            }
-        }
-
-        @android.webkit.JavascriptInterface
-        public String getSharedFileMime(int index) {
-            synchronized (pendingSharedItems) {
-                if (index >= 0 && index < pendingSharedItems.size()) {
-                    return pendingSharedItems.get(index).mimeType;
-                }
-                return "application/octet-stream";
-            }
-        }
-
-        @android.webkit.JavascriptInterface
-        public String getSharedFileBase64(int index) {
-            synchronized (pendingSharedItems) {
-                if (index >= 0 && index < pendingSharedItems.size()) {
-                    return pendingSharedItems.get(index).base64Data;
-                }
-                return "";
-            }
-        }
-
-        @android.webkit.JavascriptInterface
-        public void clearSharedFiles() {
-            synchronized (pendingSharedItems) {
-                pendingSharedItems.clear();
-            }
         }
     }
 
@@ -291,7 +247,19 @@ public class MainActivity extends AppCompatActivity {
         });
 
         handleShareIntent(getIntent());
-        startConnectionFlow(false);
+
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String rawCachedUrl = prefs.getString(KEY_CACHED_URL, null);
+        String cachedUrl = extractOrigin(rawCachedUrl);
+
+        if (cachedUrl != null && !cachedUrl.isEmpty()) {
+            currentActiveUrl = cachedUrl;
+            loadingLayout.setVisibility(View.GONE);
+            webView.setVisibility(View.VISIBLE);
+            loadUrlInApp(cachedUrl, "");
+        } else {
+            startConnectionFlow(false);
+        }
     }
 
     // ── BottomSheet nativo con opciones dinámicas y Modo Oscuro ──────────────
@@ -554,6 +522,7 @@ public class MainActivity extends AppCompatActivity {
 
                 if (url != null && !url.equals("about:blank") && !url.startsWith("data:")) {
                     String origin = extractOrigin(url);
+                    currentActiveUrl = origin;
                     getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                             .edit()
                             .putString(KEY_CACHED_URL, origin)
@@ -561,16 +530,10 @@ public class MainActivity extends AppCompatActivity {
                             .apply();
                 }
 
-                loadingLayout.animate()
-                        .alpha(0f)
-                        .setDuration(220)
-                        .withEndAction(() -> {
-                            loadingLayout.setVisibility(View.GONE);
-                            loadingLayout.setAlpha(1f);
-                            webView.setVisibility(View.VISIBLE);
-                        });
+                loadingLayout.setVisibility(View.GONE);
+                webView.setVisibility(View.VISIBLE);
 
-                notifyWebOfSharedFiles();
+                triggerPendingSharedUpload();
             }
 
             @Override
@@ -769,14 +732,18 @@ public class MainActivity extends AppCompatActivity {
         }
 
         runOnUiThread(() -> {
-            webView.setVisibility(View.GONE);
-            loadingLayout.setAlpha(1f);
-            loadingLayout.setVisibility(View.VISIBLE);
-            progressBar.setVisibility(View.VISIBLE);
-            retryButton.setVisibility(View.GONE);
-            statusText.setText("Iniciando...");
-            subStatusText.setText("Conectando al mostrador");
-            startLogoPulse();
+            SharedPreferences p = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            String savedUrl = p.getString(KEY_CACHED_URL, null);
+            if (savedUrl == null || savedUrl.isEmpty()) {
+                webView.setVisibility(View.GONE);
+                loadingLayout.setAlpha(1f);
+                loadingLayout.setVisibility(View.VISIBLE);
+                progressBar.setVisibility(View.VISIBLE);
+                retryButton.setVisibility(View.GONE);
+                statusText.setText("Iniciando...");
+                subStatusText.setText("Conectando al mostrador");
+                startLogoPulse();
+            }
         });
 
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -892,6 +859,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 if (resolutionCounter.get() == resId) {
                     loadUrlInApp(origin, connectionType);
+                    triggerPendingSharedUpload();
                 }
             });
         }
@@ -1177,49 +1145,56 @@ public class MainActivity extends AppCompatActivity {
     private void handleShareIntent(Intent intent) {
         if (intent == null) return;
         String action = intent.getAction();
-        if (!Intent.ACTION_SEND.equals(action) && !Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+        if (!Intent.ACTION_SEND.equals(action) && !Intent.ACTION_SEND_MULTIPLE.equals(action) && !Intent.ACTION_VIEW.equals(action)) {
             return;
         }
 
         executor.execute(() -> {
             try {
-                synchronized (pendingSharedItems) {
-                    pendingSharedItems.clear();
-                }
+                pendingSharedFiles.clear();
                 String type = intent.getType();
 
-                if (Intent.ACTION_SEND.equals(action)) {
+                if (Intent.ACTION_SEND.equals(action) || Intent.ACTION_VIEW.equals(action)) {
                     Uri uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
-                    if (uri == null && intent.getData() != null) {
+                    if (uri == null) {
                         uri = intent.getData();
                     }
                     if (uri == null && intent.getClipData() != null && intent.getClipData().getItemCount() > 0) {
                         uri = intent.getClipData().getItemAt(0).getUri();
                     }
                     if (uri != null) {
-                        processShareUri(uri, type);
+                        File saved = copyShareUriToCache(uri, type);
+                        if (saved != null) {
+                            pendingSharedFiles.add(saved);
+                        }
                     }
                 } else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
                     ArrayList<Uri> uris = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
                     if (uris != null) {
                         for (Uri uri : uris) {
-                            if (uri != null) processShareUri(uri, type);
+                            if (uri != null) {
+                                File saved = copyShareUriToCache(uri, type);
+                                if (saved != null) pendingSharedFiles.add(saved);
+                            }
                         }
                     } else if (intent.getClipData() != null) {
                         for (int i = 0; i < intent.getClipData().getItemCount(); i++) {
                             Uri uri = intent.getClipData().getItemAt(i).getUri();
-                            if (uri != null) processShareUri(uri, type);
+                            if (uri != null) {
+                                File saved = copyShareUriToCache(uri, type);
+                                if (saved != null) pendingSharedFiles.add(saved);
+                            }
                         }
                     }
                 }
             } finally {
-                notifyWebOfSharedFiles();
+                triggerPendingSharedUpload();
             }
         });
     }
 
-    private void processShareUri(Uri uri, String explicitMime) {
-        if (uri == null) return;
+    private File copyShareUriToCache(Uri uri, String explicitMime) {
+        if (uri == null) return null;
         try {
             ContentResolver resolver = getContentResolver();
             String fileName = null;
@@ -1249,7 +1224,6 @@ public class MainActivity extends AppCompatActivity {
             if (fileName == null || fileName.trim().isEmpty()) {
                 fileName = uri.getLastPathSegment();
             }
-
             if (fileName != null) {
                 fileName = Uri.decode(fileName);
             }
@@ -1274,47 +1248,173 @@ public class MainActivity extends AppCompatActivity {
             }
 
             if (fileName == null || fileName.trim().isEmpty()) {
-                fileName = "archivo_" + System.currentTimeMillis();
+                fileName = "archivo_" + System.currentTimeMillis() + ".pdf";
             }
 
-            InputStream is = resolver.openInputStream(uri);
-            if (is != null) {
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                byte[] buffer = new byte[16384];
-                int len;
-                while ((len = is.read(buffer)) != -1) {
-                    baos.write(buffer, 0, len);
-                }
-                is.close();
+            fileName = fileName.replaceAll("[^a-zA-Z0-9._-]", "_");
 
-                byte[] bytes = baos.toByteArray();
-                if (bytes.length > 0) {
-                    SharedItem item = new SharedItem();
-                    item.name = fileName;
-                    item.mimeType = (mimeType != null && !mimeType.isEmpty()) ? mimeType : "application/octet-stream";
-                    item.base64Data = Base64.encodeToString(bytes, Base64.NO_WRAP);
-                    synchronized (pendingSharedItems) {
-                        pendingSharedItems.add(item);
-                    }
-                }
+            File cacheDir = new File(getCacheDir(), "shared_uploads");
+            if (!cacheDir.exists()) cacheDir.mkdirs();
+
+            File destFile = new File(cacheDir, System.currentTimeMillis() + "_" + fileName);
+
+            InputStream is = resolver.openInputStream(uri);
+            if (is == null) return null;
+
+            FileOutputStream fos = new FileOutputStream(destFile);
+            byte[] buffer = new byte[32768];
+            int bytesRead;
+            while ((bytesRead = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
+            }
+            fos.flush();
+            fos.close();
+            is.close();
+
+            if (destFile.exists() && destFile.length() > 0) {
+                return destFile;
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+        return null;
     }
 
-    private void notifyWebOfSharedFiles() {
-        synchronized (pendingSharedItems) {
-            if (pendingSharedItems.isEmpty()) return;
+    private void triggerPendingSharedUpload() {
+        if (!pendingSharedFiles.isEmpty() && currentActiveUrl != null && !currentActiveUrl.isEmpty()) {
+            uploadSharedFiles(new ArrayList<>(pendingSharedFiles));
         }
+    }
+
+    private void uploadSharedFiles(final List<File> filesToUpload) {
+        if (filesToUpload == null || filesToUpload.isEmpty()) return;
+        if (currentActiveUrl == null || currentActiveUrl.trim().isEmpty()) return;
+
+        final String baseUrl = extractOrigin(currentActiveUrl);
+        if (baseUrl.isEmpty()) return;
+
+        if (isUploadingShared.getAndSet(true)) {
+            return;
+        }
+
+        final String uploadUrl = baseUrl + "/api/upload";
+
         runOnUiThread(() -> {
-            if (webView != null && isConnectionActive) {
-                webView.evaluateJavascript(
-                    "if (typeof window.checkPendingSharedFiles === 'function') { window.checkPendingSharedFiles(); } else { setTimeout(function() { if (typeof window.checkPendingSharedFiles === 'function') window.checkPendingSharedFiles(); }, 500); }",
-                    null
-                );
+            String label = filesToUpload.size() == 1 ? filesToUpload.get(0).getName() : (filesToUpload.size() + " fotos");
+            int uIdx = label.indexOf('_');
+            if (uIdx > 0 && uIdx < label.length() - 1) label = label.substring(uIdx + 1);
+            String safeLabel = label.replace("'", "\\'");
+            webView.evaluateJavascript(
+                "if (typeof window.showUploadProgress === 'function') { window.showUploadProgress('" + safeLabel + "', " + filesToUpload.size() + "); }",
+                null
+            );
+        });
+
+        executor.execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                String boundary = "===" + System.currentTimeMillis() + "===";
+                String LINE_FEED = "\r\n";
+                URL url = new URL(uploadUrl);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(45000);
+                conn.setUseCaches(false);
+                conn.setDoOutput(true);
+                conn.setDoInput(true);
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+                conn.setRequestProperty("User-Agent", "ElTato-Android-App");
+                conn.setRequestProperty("X-Kiosco-Token", kioscoSecret);
+                conn.setRequestProperty("Cookie", "kiosco_auth=" + kioscoSecret + "; Path=/; SameSite=Lax");
+
+                OutputStream outputStream = conn.getOutputStream();
+                PrintWriter writer = new PrintWriter(new OutputStreamWriter(outputStream, "UTF-8"), true);
+
+                for (File file : filesToUpload) {
+                    if (!file.exists() || file.length() == 0) continue;
+                    String originalName = file.getName();
+                    int uIdx = originalName.indexOf('_');
+                    if (uIdx > 0 && uIdx < originalName.length() - 1) {
+                        originalName = originalName.substring(uIdx + 1);
+                    }
+                    String mime = getMimeTypeForFile(originalName);
+
+                    writer.append("--" + boundary).append(LINE_FEED);
+                    writer.append("Content-Disposition: form-data; name=\"documento\"; filename=\"" + originalName + "\"").append(LINE_FEED);
+                    writer.append("Content-Type: " + mime).append(LINE_FEED);
+                    writer.append(LINE_FEED).flush();
+
+                    FileInputStream fis = new FileInputStream(file);
+                    byte[] buffer = new byte[32768];
+                    int len;
+                    while ((len = fis.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, len);
+                    }
+                    outputStream.flush();
+                    fis.close();
+                    writer.append(LINE_FEED).flush();
+                }
+
+                writer.append("--" + boundary + "--").append(LINE_FEED).flush();
+                writer.close();
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode >= 200 && responseCode < 300) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) sb.append(line);
+                    reader.close();
+
+                    final String responseJson = sb.toString();
+
+                    for (File f : filesToUpload) {
+                        try { f.delete(); } catch (Exception ignored) {}
+                    }
+                    pendingSharedFiles.removeAll(filesToUpload);
+
+                    runOnUiThread(() -> {
+                        webView.evaluateJavascript(
+                            "if (typeof window.onSharedFileUploaded === 'function') { window.onSharedFileUploaded(" + responseJson + "); }",
+                            null
+                        );
+                    });
+                } else {
+                    runOnUiThread(() -> {
+                        webView.evaluateJavascript(
+                            "if (typeof window.hideUploadProgress === 'function') window.hideUploadProgress(); if (typeof window.showInlineNotice === 'function') window.showInlineNotice('Error en servidor al procesar archivo', 'error');",
+                            null
+                        );
+                    });
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                runOnUiThread(() -> {
+                    webView.evaluateJavascript(
+                        "if (typeof window.hideUploadProgress === 'function') window.hideUploadProgress(); if (typeof window.showInlineNotice === 'function') window.showInlineNotice('No se pudo subir el archivo: verifique conexión', 'error');",
+                        null
+                    );
+                });
+            } finally {
+                isUploadingShared.set(false);
+                if (conn != null) {
+                    try { conn.disconnect(); } catch (Exception ignored) {}
+                }
             }
         });
+    }
+
+    private String getMimeTypeForFile(String fileName) {
+        if (fileName == null) return "application/octet-stream";
+        String lower = fileName.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (lower.endsWith(".doc")) return "application/msword";
+        return "application/octet-stream";
     }
 
     @Override

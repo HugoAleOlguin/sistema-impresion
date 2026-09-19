@@ -55,7 +55,7 @@
 31-->[androidx.core:core:1.13.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\e05c08cb719129d2c01c616774febb39\transformed\core-1.13.0\AndroidManifest.xml:26:22-94
 32
 33    <application
-33-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:14:5-64:19
+33-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:14:5-73:19
 34        android:allowBackup="true"
 34-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:15:9-35
 35        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
@@ -76,7 +76,7 @@
 43        android:usesCleartextTraffic="true" >
 43-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:21:9-44
 44        <activity
-44-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:24:9-52:20
+44-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:24:9-61:20
 45            android:name="com.eltato.impresion.MainActivity"
 45-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:25:13-41
 46            android:configChanges="orientation|screenSize|keyboardHidden"
@@ -143,89 +143,112 @@
 75-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:39:17-60
 75-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:39:23-57
 76            </intent-filter>
-77        </activity>
-78
-79        <provider
-80            android:name="androidx.core.content.FileProvider"
-80-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:55:13-62
-81            android:authorities="com.eltato.impresion.fileprovider"
-81-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:56:13-64
-82            android:exported="false"
-82-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:57:13-37
-83            android:grantUriPermissions="true" >
-83-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:58:13-47
-84            <meta-data
-84-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:59:13-61:54
-85                android:name="android.support.FILE_PROVIDER_PATHS"
-85-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:60:17-67
-86                android:resource="@xml/file_paths" />
-86-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:61:17-51
-87        </provider>
-88        <provider
-88-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
-89            android:name="androidx.startup.InitializationProvider"
-89-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:25:13-67
-90            android:authorities="com.eltato.impresion.androidx-startup"
-90-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:26:13-68
-91            android:exported="false" >
-91-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:27:13-37
-92            <meta-data
-92-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:29:13-31:52
-93                android:name="androidx.emoji2.text.EmojiCompatInitializer"
-93-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:30:17-75
-94                android:value="androidx.startup" />
-94-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:31:17-49
+77
+78            <!-- Abrir archivo PDF directamente desde visores (WhatsApp, Adobe, Descargas) -->
+79            <intent-filter android:label="Imprimir — El Tato" >
+79-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:54:13-60:29
+79-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:54:28-62
+80                <action android:name="android.intent.action.VIEW" />
+80-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:55:17-69
+80-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:55:25-66
+81
+82                <category android:name="android.intent.category.DEFAULT" />
+82-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:38:17-76
+82-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:38:27-73
+83
+84                <data android:scheme="content" />
+84-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:39:17-60
+84-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:57:23-47
+85                <data android:scheme="file" />
+85-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:39:17-60
+85-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:57:23-47
+86                <data android:mimeType="application/pdf" />
+86-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:39:17-60
+86-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:39:23-57
+87            </intent-filter>
+88        </activity>
+89
+90        <provider
+91            android:name="androidx.core.content.FileProvider"
+91-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:64:13-62
+92            android:authorities="com.eltato.impresion.fileprovider"
+92-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:65:13-64
+93            android:exported="false"
+93-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:66:13-37
+94            android:grantUriPermissions="true" >
+94-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:67:13-47
 95            <meta-data
-95-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\55149ba2d29c713f6fcdc6239341c274\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:29:13-31:52
-96                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
-96-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\55149ba2d29c713f6fcdc6239341c274\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:30:17-78
-97                android:value="androidx.startup" />
-97-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\55149ba2d29c713f6fcdc6239341c274\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:31:17-49
-98            <meta-data
-98-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:29:13-31:52
-99                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
-99-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:30:17-85
-100                android:value="androidx.startup" />
-100-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:31:17-49
-101        </provider>
-102
-103        <receiver
-103-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:34:9-52:20
-104            android:name="androidx.profileinstaller.ProfileInstallReceiver"
-104-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:35:13-76
-105            android:directBootAware="false"
-105-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:36:13-44
-106            android:enabled="true"
-106-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:37:13-35
-107            android:exported="true"
-107-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:38:13-36
-108            android:permission="android.permission.DUMP" >
-108-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:39:13-57
-109            <intent-filter>
-109-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:40:13-42:29
-110                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
-110-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:41:17-91
-110-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:41:25-88
-111            </intent-filter>
-112            <intent-filter>
-112-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:43:13-45:29
-113                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
-113-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:44:17-85
-113-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:44:25-82
-114            </intent-filter>
-115            <intent-filter>
-115-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:46:13-48:29
-116                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
-116-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:47:17-88
-116-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:47:25-85
-117            </intent-filter>
-118            <intent-filter>
-118-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:49:13-51:29
-119                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
-119-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:50:17-95
-119-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:50:25-92
-120            </intent-filter>
-121        </receiver>
-122    </application>
-123
-124</manifest>
+95-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:68:13-70:54
+96                android:name="android.support.FILE_PROVIDER_PATHS"
+96-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:69:17-67
+97                android:resource="@xml/file_paths" />
+97-->C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:70:17-51
+98        </provider>
+99        <provider
+99-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
+100            android:name="androidx.startup.InitializationProvider"
+100-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:25:13-67
+101            android:authorities="com.eltato.impresion.androidx-startup"
+101-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:26:13-68
+102            android:exported="false" >
+102-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:27:13-37
+103            <meta-data
+103-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:29:13-31:52
+104                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+104-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:30:17-75
+105                android:value="androidx.startup" />
+105-->[androidx.emoji2:emoji2:1.3.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\570163f0932560f64a3635f531f53d13\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:31:17-49
+106            <meta-data
+106-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\55149ba2d29c713f6fcdc6239341c274\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:29:13-31:52
+107                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+107-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\55149ba2d29c713f6fcdc6239341c274\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:30:17-78
+108                android:value="androidx.startup" />
+108-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\55149ba2d29c713f6fcdc6239341c274\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:31:17-49
+109            <meta-data
+109-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:29:13-31:52
+110                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+110-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:30:17-85
+111                android:value="androidx.startup" />
+111-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:31:17-49
+112        </provider>
+113
+114        <receiver
+114-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:34:9-52:20
+115            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+115-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:35:13-76
+116            android:directBootAware="false"
+116-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:36:13-44
+117            android:enabled="true"
+117-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:37:13-35
+118            android:exported="true"
+118-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:38:13-36
+119            android:permission="android.permission.DUMP" >
+119-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:39:13-57
+120            <intent-filter>
+120-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:40:13-42:29
+121                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+121-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:41:17-91
+121-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:41:25-88
+122            </intent-filter>
+123            <intent-filter>
+123-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:43:13-45:29
+124                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+124-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:44:17-85
+124-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:44:25-82
+125            </intent-filter>
+126            <intent-filter>
+126-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:46:13-48:29
+127                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+127-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:47:17-88
+127-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:47:25-85
+128            </intent-filter>
+129            <intent-filter>
+129-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:49:13-51:29
+130                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+130-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:50:17-95
+130-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\14099b6a59bff0db4a29d4fd8e97c579\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:50:25-92
+131            </intent-filter>
+132        </receiver>
+133    </application>
+134
+135</manifest>

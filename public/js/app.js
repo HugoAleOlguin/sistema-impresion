@@ -253,20 +253,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn('Error fetchRecentJobs:', e);
   }
 
-  // Comprobar si se abrió la app compartiendo un archivo desde WhatsApp o Galería
-  try {
-    if (typeof window.checkPendingSharedFiles === 'function') {
-      await window.checkPendingSharedFiles();
-    }
-  } catch (e) {
-    console.warn('Error checkPendingSharedFiles:', e);
-  }
-  setTimeout(() => {
-    if (typeof window.checkPendingSharedFiles === 'function') {
-      window.checkPendingSharedFiles();
-    }
-  }, 700);
-
   setInterval(() => {
     if (document.visibilityState === 'visible' && state.isOnline) {
       fetchRecentJobs(true);
@@ -1040,102 +1026,7 @@ async function uploadFiles(filesInput) {
     }
 
     const data = await res.json();
-    state.loadedFile = data;
-
-    // Resetear instancia para que la próxima visualización cargue el PDF fresco
-    pdfDocInstance = null;
-
-    // Si todas las entradas son imágenes, mantener la lista en memoria
-    if (isAllImages(files) || data.isImage) {
-      state.currentPhotoFiles = files;
-    }
-
-    // Obtener buffer del PDF para el visor y selector
-    if (data.pdfUrl) {
-      try {
-        const pdfRes = await fetch(data.pdfUrl);
-        state.pdfArrayBuffer = await pdfRes.arrayBuffer();
-      } catch (e) {
-        console.warn('No se pudo descargar vista previa PDF:', e);
-        state.pdfArrayBuffer = null;
-      }
-    } else if (!data.isImage && files.length === 1) {
-      try {
-        state.pdfArrayBuffer = await files[0].arrayBuffer();
-      } catch (_) {
-        state.pdfArrayBuffer = null;
-      }
-    } else {
-      state.pdfArrayBuffer = null;
-    }
-
-    state.copies = 1;
-    elements.copiesDisplay.textContent = '1';
-
-    elements.dropZone.classList.add('hidden');
-    elements.fileLoadedInfo.classList.remove('hidden');
-
-    const pageCount = data.pageCount || 1;
-    state.selectedPages = Array.from({ length: pageCount }, (_, i) => i + 1);
-
-    let badgeText = 'PDF';
-    elements.fileTypeBadge.className = 'file-type-pill';
-    if (data.isImage) {
-      badgeText = data.isMultiImage ? `${pageCount} FOTOS` : 'FOTO';
-      elements.fileTypeBadge.classList.add('photo');
-    } else if (data.isWord) {
-      badgeText = 'WORD';
-      elements.fileTypeBadge.classList.add('word');
-    }
-    elements.fileTypeBadge.textContent = badgeText;
-
-    elements.fileName.textContent = data.originalName || (isMultiple ? `${files.length} fotos` : files[0].name) || 'Documento';
-    elements.filePages.textContent = data.isImage
-      ? (pageCount === 1 ? '1 pág (foto A4)' : `${pageCount} págs (${pageCount} fotos A4)`)
-      : `${pageCount} ${pageCount === 1 ? 'página' : 'páginas'}`;
-
-    const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
-    elements.fileSize.textContent = formatBytes(totalBytes);
-
-    // Botón de visualización SIEMPRE visible (incluso con 1 sola hoja o 1 sola foto)
-    elements.btnOpenPageSelector.classList.remove('hidden');
-    if (pageCount === 1) {
-      if (elements.btnPageSelectorLabel) {
-        elements.btnPageSelectorLabel.textContent = data.isImage ? 'Ver foto' : 'Ver documento';
-      }
-      elements.btnOpenPageSelector.title = data.isImage ? 'Abrir y ver la foto en pantalla completa' : 'Abrir y ver la hoja en pantalla completa';
-    } else {
-      if (elements.btnPageSelectorLabel) {
-        elements.btnPageSelectorLabel.textContent = 'Ver / Elegir páginas';
-      }
-      elements.btnOpenPageSelector.title = 'Ver miniaturas y elegir páginas';
-    }
-
-    // Botón para agregar otra foto (visible si el archivo actual es foto)
-    if (data.isImage && elements.btnAddPhoto) {
-      elements.btnAddPhoto.classList.remove('hidden');
-    } else if (elements.btnAddPhoto) {
-      elements.btnAddPhoto.classList.add('hidden');
-    }
-
-    if (pageCount <= 1) {
-      setOption('duplex', false);
-      elements.btnDuplex.classList.add('disabled-hint');
-    } else {
-      elements.btnDuplex.classList.remove('disabled-hint');
-    }
-
-    // Activar botón de imprimir y descartar
-    elements.btnApprovePrint.classList.remove('is-idle');
-    elements.btnCancelJob.classList.remove('is-idle');
-    elements.btnCancelJob.classList.remove('hidden');
-
-    await updateQuote();
-    triggerHaptic('select');
-
-    // Finalizar animación al 100% y desbloquear pantalla
-    await finishUploadProgress(data.isImage ? (isMultiple ? '¡Fotos listas!' : '¡Foto lista!') : '¡Documento listo!');
-    showInlineNotice(`¡Listo! ${pageCount} ${pageCount === 1 ? 'página detectada' : 'páginas detectadas'}`, 'success');
+    await applyUploadedDocumentData(data, files);
   } catch (err) {
     hideUploadProgress();
     console.error('Error al subir:', err);
@@ -1968,66 +1859,148 @@ function applyPageSelection() {
 }
 
 // -------------------------------------------------------------
-// RECEPCIÓN DE ARCHIVOS COMPARTIDOS DESDE WHATSAPP / GALERÍA (ANDROID SHARE INTENT)
+// CONTROL Y RENDERIZADO DE DOCUMENTOS CARGADOS (LOCAL O NATIVO COMPARTIDO)
 // -------------------------------------------------------------
-function base64ToFile(base64Str, fileName, mimeType) {
-  const binaryString = atob(base64Str);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+async function applyUploadedDocumentData(data, originalFiles = null) {
+  state.loadedFile = data;
+
+  // Resetear instancia para que la próxima visualización cargue el PDF fresco
+  pdfDocInstance = null;
+
+  // Si todas las entradas son imágenes, mantener la lista en memoria
+  if (originalFiles && isAllImages(originalFiles)) {
+    state.currentPhotoFiles = originalFiles;
+  } else if (data.isImage && !state.currentPhotoFiles) {
+    state.currentPhotoFiles = [];
   }
-  return new File([bytes], fileName, {
-    type: mimeType || 'application/octet-stream',
-    lastModified: Date.now()
-  });
+
+  // Obtener buffer del PDF para el visor y selector
+  if (data.pdfUrl) {
+    try {
+      const pdfRes = await fetch(data.pdfUrl);
+      state.pdfArrayBuffer = await pdfRes.arrayBuffer();
+    } catch (e) {
+      console.warn('No se pudo descargar vista previa PDF:', e);
+      state.pdfArrayBuffer = null;
+    }
+  } else if (!data.isImage && originalFiles && originalFiles.length === 1) {
+    try {
+      state.pdfArrayBuffer = await originalFiles[0].arrayBuffer();
+    } catch (_) {
+      state.pdfArrayBuffer = null;
+    }
+  } else {
+    state.pdfArrayBuffer = null;
+  }
+
+  state.copies = 1;
+  if (elements.copiesDisplay) elements.copiesDisplay.textContent = '1';
+
+  if (elements.dropZone) elements.dropZone.classList.add('hidden');
+  if (elements.fileLoadedInfo) elements.fileLoadedInfo.classList.remove('hidden');
+
+  const pageCount = data.pageCount || 1;
+  state.selectedPages = Array.from({ length: pageCount }, (_, i) => i + 1);
+
+  let badgeText = 'PDF';
+  if (elements.fileTypeBadge) {
+    elements.fileTypeBadge.className = 'file-type-pill';
+    if (data.isImage) {
+      badgeText = data.isMultiImage ? `${pageCount} FOTOS` : 'FOTO';
+      elements.fileTypeBadge.classList.add('photo');
+    } else if (data.isWord) {
+      badgeText = 'WORD';
+      elements.fileTypeBadge.classList.add('word');
+    }
+    elements.fileTypeBadge.textContent = badgeText;
+  }
+
+  if (elements.fileName) {
+    const fallbackName = originalFiles && originalFiles.length > 1
+      ? `${originalFiles.length} fotos`
+      : (originalFiles && originalFiles[0] ? originalFiles[0].name : 'Documento');
+    elements.fileName.textContent = data.originalName || fallbackName;
+  }
+
+  if (elements.filePages) {
+    elements.filePages.textContent = data.isImage
+      ? (pageCount === 1 ? '1 pág (foto A4)' : `${pageCount} págs (${pageCount} fotos A4)`)
+      : `${pageCount} ${pageCount === 1 ? 'página' : 'páginas'}`;
+  }
+
+  if (elements.fileSize) {
+    if (originalFiles && originalFiles.length > 0) {
+      const totalBytes = originalFiles.reduce((acc, f) => acc + (f.size || 0), 0);
+      elements.fileSize.textContent = formatBytes(totalBytes);
+    } else {
+      elements.fileSize.textContent = '';
+    }
+  }
+
+  // Botón de visualización SIEMPRE visible
+  if (elements.btnOpenPageSelector) {
+    elements.btnOpenPageSelector.classList.remove('hidden');
+    if (pageCount === 1) {
+      if (elements.btnPageSelectorLabel) {
+        elements.btnPageSelectorLabel.textContent = data.isImage ? 'Ver foto' : 'Ver documento';
+      }
+      elements.btnOpenPageSelector.title = data.isImage ? 'Abrir y ver la foto en pantalla completa' : 'Abrir y ver la hoja en pantalla completa';
+    } else {
+      if (elements.btnPageSelectorLabel) {
+        elements.btnPageSelectorLabel.textContent = 'Ver / Elegir páginas';
+      }
+      elements.btnOpenPageSelector.title = 'Ver miniaturas y elegir páginas';
+    }
+  }
+
+  // Botón para agregar otra foto
+  if (data.isImage && elements.btnAddPhoto) {
+    elements.btnAddPhoto.classList.remove('hidden');
+  } else if (elements.btnAddPhoto) {
+    elements.btnAddPhoto.classList.add('hidden');
+  }
+
+  if (pageCount <= 1) {
+    setOption('duplex', false);
+    if (elements.btnDuplex) elements.btnDuplex.classList.add('disabled-hint');
+  } else {
+    if (elements.btnDuplex) elements.btnDuplex.classList.remove('disabled-hint');
+  }
+
+  if (elements.btnApprovePrint) elements.btnApprovePrint.classList.remove('is-idle');
+  if (elements.btnCancelJob) {
+    elements.btnCancelJob.classList.remove('is-idle');
+    elements.btnCancelJob.classList.remove('hidden');
+  }
+
+  await updateQuote();
+  triggerHaptic('select');
+
+  await finishUploadProgress(data.isImage ? '¡Foto lista!' : '¡Documento listo!');
+  showInlineNotice(`¡Listo! ${pageCount} ${pageCount === 1 ? 'página detectada' : 'páginas detectadas'}`, 'success');
 }
 
-let isProcessingSharedFiles = false;
+// -------------------------------------------------------------
+// PUENTE NATIVO: ARCHIVOS COMPARTIDOS DIRECTOS (WHATSAPP / GALERÍA)
+// -------------------------------------------------------------
+window.showUploadProgress = showUploadProgress;
+window.hideUploadProgress = hideUploadProgress;
+window.finishUploadProgress = finishUploadProgress;
+window.showInlineNotice = showInlineNotice;
 
-window.checkPendingSharedFiles = async function() {
-  if (isProcessingSharedFiles) return;
-  if (!window.KioscoNativeApp || typeof window.KioscoNativeApp.getSharedFilesCount !== 'function') {
-    return;
-  }
-
+window.onSharedFileUploaded = async function(data) {
   try {
-    const count = window.KioscoNativeApp.getSharedFilesCount();
-    if (!count || count <= 0) return;
-
-    isProcessingSharedFiles = true;
-
-    const files = [];
-    for (let i = 0; i < count; i++) {
-      const name = window.KioscoNativeApp.getSharedFileName(i);
-      const mime = window.KioscoNativeApp.getSharedFileMime(i);
-      const b64 = window.KioscoNativeApp.getSharedFileBase64(i);
-      if (b64 && b64.length > 0) {
-        const fileObj = base64ToFile(b64, name || `archivo_${i + 1}`, mime);
-        files.push(fileObj);
-      }
+    if (!data || !data.success) {
+      hideUploadProgress();
+      showInlineNotice((data && data.error) ? data.error : 'Error al procesar el archivo compartido', 'error');
+      return;
     }
-
-    if (typeof window.KioscoNativeApp.clearSharedFiles === 'function') {
-      window.KioscoNativeApp.clearSharedFiles();
-    }
-
-    if (files.length > 0) {
-      resetCurrentJob();
-      showInlineNotice(
-        files.length === 1
-          ? `Cargando archivo compartido: ${files[0].name}`
-          : `Cargando ${files.length} fotos compartidas...`,
-        'info',
-        3500
-      );
-      await uploadFiles(files);
-    }
+    resetCurrentJob();
+    await applyUploadedDocumentData(data, null);
   } catch (err) {
-    console.error('Error procesando archivos compartidos de Android:', err);
-    showInlineNotice('Error al cargar archivo compartido', 'error');
-  } finally {
-    isProcessingSharedFiles = false;
+    hideUploadProgress();
+    console.error('Error procesando archivo compartido recibido:', err);
+    showInlineNotice('Error al preparar el documento para impresión', 'error');
   }
 };
 

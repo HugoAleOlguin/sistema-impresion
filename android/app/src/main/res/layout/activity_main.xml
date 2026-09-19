@@ -14,11 +14,11 @@
             android:id="@+id/webView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:visibility="gone" />
+            android:visibility="visible" />
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
-    <!-- Overlay de carga y reconexión estilizado, fluido y psicológicamente rápido -->
+    <!-- Overlay de carga y reconexión (sólo visible si no hay conexión en primer arranque) -->
     <LinearLayout
         android:id="@+id/loadingLayout"
         android:layout_width="match_parent"
@@ -26,6 +26,7 @@
         android:gravity="center"
         android:orientation="vertical"
         android:background="@color/backgroundColor"
+        android:visibility="gone"
         android:padding="32dp">
 
         <!-- Contenedor del Logo de la App -->
