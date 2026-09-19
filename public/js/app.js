@@ -253,6 +253,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn('Error fetchRecentJobs:', e);
   }
 
+  // Comprobar si se abrió la app compartiendo un archivo desde WhatsApp o Galería
+  try {
+    if (typeof window.checkPendingSharedFiles === 'function') {
+      await window.checkPendingSharedFiles();
+    }
+  } catch (e) {
+    console.warn('Error checkPendingSharedFiles:', e);
+  }
+  setTimeout(() => {
+    if (typeof window.checkPendingSharedFiles === 'function') {
+      window.checkPendingSharedFiles();
+    }
+  }, 700);
+
   setInterval(() => {
     if (document.visibilityState === 'visible' && state.isOnline) {
       fetchRecentJobs(true);
@@ -1952,3 +1966,68 @@ function applyPageSelection() {
 
   updateQuote();
 }
+
+// -------------------------------------------------------------
+// RECEPCIÓN DE ARCHIVOS COMPARTIDOS DESDE WHATSAPP / GALERÍA (ANDROID SHARE INTENT)
+// -------------------------------------------------------------
+function base64ToFile(base64Str, fileName, mimeType) {
+  const binaryString = atob(base64Str);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return new File([bytes], fileName, {
+    type: mimeType || 'application/octet-stream',
+    lastModified: Date.now()
+  });
+}
+
+let isProcessingSharedFiles = false;
+
+window.checkPendingSharedFiles = async function() {
+  if (isProcessingSharedFiles) return;
+  if (!window.KioscoNativeApp || typeof window.KioscoNativeApp.getSharedFilesCount !== 'function') {
+    return;
+  }
+
+  try {
+    const count = window.KioscoNativeApp.getSharedFilesCount();
+    if (!count || count <= 0) return;
+
+    isProcessingSharedFiles = true;
+
+    const files = [];
+    for (let i = 0; i < count; i++) {
+      const name = window.KioscoNativeApp.getSharedFileName(i);
+      const mime = window.KioscoNativeApp.getSharedFileMime(i);
+      const b64 = window.KioscoNativeApp.getSharedFileBase64(i);
+      if (b64 && b64.length > 0) {
+        const fileObj = base64ToFile(b64, name || `archivo_${i + 1}`, mime);
+        files.push(fileObj);
+      }
+    }
+
+    if (typeof window.KioscoNativeApp.clearSharedFiles === 'function') {
+      window.KioscoNativeApp.clearSharedFiles();
+    }
+
+    if (files.length > 0) {
+      resetCurrentJob();
+      showInlineNotice(
+        files.length === 1
+          ? `Cargando archivo compartido: ${files[0].name}`
+          : `Cargando ${files.length} fotos compartidas...`,
+        'info',
+        3500
+      );
+      await uploadFiles(files);
+    }
+  } catch (err) {
+    console.error('Error procesando archivos compartidos de Android:', err);
+    showInlineNotice('Error al cargar archivo compartido', 'error');
+  } finally {
+    isProcessingSharedFiles = false;
+  }
+};
+

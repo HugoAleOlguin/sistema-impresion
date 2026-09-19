@@ -1,10 +1,12 @@
 package com.eltato.impresion;
 
 import android.Manifest;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
@@ -13,7 +15,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.provider.OpenableColumns;
 import android.text.format.Formatter;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -50,6 +54,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -60,6 +65,7 @@ import java.net.NetworkInterface;
 import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.LinkedHashSet;
@@ -105,10 +111,63 @@ public class MainActivity extends AppCompatActivity {
     private String githubToken = "";
     private boolean isDarkMode = false;
 
+    // ── Elementos compartidos desde WhatsApp / Galería (Share Intent) ──────────
+    private static class SharedItem {
+        String name;
+        String mimeType;
+        String base64Data;
+    }
+
+    private final List<SharedItem> pendingSharedItems = Collections.synchronizedList(new ArrayList<>());
+
     public class WebAppInterface {
         @android.webkit.JavascriptInterface
         public void notifyTheme(String theme) {
             runOnUiThread(() -> isDarkMode = "dark".equalsIgnoreCase(theme));
+        }
+
+        @android.webkit.JavascriptInterface
+        public int getSharedFilesCount() {
+            synchronized (pendingSharedItems) {
+                return pendingSharedItems.size();
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public String getSharedFileName(int index) {
+            synchronized (pendingSharedItems) {
+                if (index >= 0 && index < pendingSharedItems.size()) {
+                    return pendingSharedItems.get(index).name;
+                }
+                return "";
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public String getSharedFileMime(int index) {
+            synchronized (pendingSharedItems) {
+                if (index >= 0 && index < pendingSharedItems.size()) {
+                    return pendingSharedItems.get(index).mimeType;
+                }
+                return "application/octet-stream";
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public String getSharedFileBase64(int index) {
+            synchronized (pendingSharedItems) {
+                if (index >= 0 && index < pendingSharedItems.size()) {
+                    return pendingSharedItems.get(index).base64Data;
+                }
+                return "";
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public void clearSharedFiles() {
+            synchronized (pendingSharedItems) {
+                pendingSharedItems.clear();
+            }
         }
     }
 
@@ -231,6 +290,7 @@ public class MainActivity extends AppCompatActivity {
             startConnectionFlow(true);
         });
 
+        handleShareIntent(getIntent());
         startConnectionFlow(false);
     }
 
@@ -509,6 +569,8 @@ public class MainActivity extends AppCompatActivity {
                             loadingLayout.setAlpha(1f);
                             webView.setVisibility(View.VISIBLE);
                         });
+
+                notifyWebOfSharedFiles();
             }
 
             @Override
@@ -1102,6 +1164,157 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         cancelPendingRetry();
         executor.shutdown();
+    }
+
+    // ── Manejo de Archivos Compartidos desde WhatsApp / Galería (Share Intent) ──
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleShareIntent(intent);
+    }
+
+    private void handleShareIntent(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getAction();
+        if (!Intent.ACTION_SEND.equals(action) && !Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            return;
+        }
+
+        executor.execute(() -> {
+            try {
+                synchronized (pendingSharedItems) {
+                    pendingSharedItems.clear();
+                }
+                String type = intent.getType();
+
+                if (Intent.ACTION_SEND.equals(action)) {
+                    Uri uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                    if (uri == null && intent.getData() != null) {
+                        uri = intent.getData();
+                    }
+                    if (uri == null && intent.getClipData() != null && intent.getClipData().getItemCount() > 0) {
+                        uri = intent.getClipData().getItemAt(0).getUri();
+                    }
+                    if (uri != null) {
+                        processShareUri(uri, type);
+                    }
+                } else if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+                    ArrayList<Uri> uris = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+                    if (uris != null) {
+                        for (Uri uri : uris) {
+                            if (uri != null) processShareUri(uri, type);
+                        }
+                    } else if (intent.getClipData() != null) {
+                        for (int i = 0; i < intent.getClipData().getItemCount(); i++) {
+                            Uri uri = intent.getClipData().getItemAt(i).getUri();
+                            if (uri != null) processShareUri(uri, type);
+                        }
+                    }
+                }
+            } finally {
+                notifyWebOfSharedFiles();
+            }
+        });
+    }
+
+    private void processShareUri(Uri uri, String explicitMime) {
+        if (uri == null) return;
+        try {
+            ContentResolver resolver = getContentResolver();
+            String fileName = null;
+            String mimeType = null;
+            try {
+                mimeType = resolver.getType(uri);
+            } catch (Exception ignored) {}
+
+            if (mimeType == null || mimeType.isEmpty() || "*/*".equals(mimeType)) {
+                mimeType = explicitMime;
+            }
+
+            Cursor cursor = null;
+            try {
+                cursor = resolver.query(uri, null, null, null, null);
+                if (cursor != null && cursor.moveToFirst()) {
+                    int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (nameIndex >= 0) {
+                        fileName = cursor.getString(nameIndex);
+                    }
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (cursor != null) cursor.close();
+            }
+
+            if (fileName == null || fileName.trim().isEmpty()) {
+                fileName = uri.getLastPathSegment();
+            }
+
+            if (fileName != null) {
+                fileName = Uri.decode(fileName);
+            }
+
+            String lowerName = (fileName != null) ? fileName.toLowerCase(Locale.ROOT) : "";
+            if (mimeType != null && mimeType.contains("pdf")) {
+                if (!lowerName.endsWith(".pdf")) fileName = (fileName != null ? fileName : "documento") + ".pdf";
+            } else if (mimeType != null && (mimeType.contains("jpeg") || mimeType.contains("jpg"))) {
+                if (!lowerName.endsWith(".jpg") && !lowerName.endsWith(".jpeg")) fileName = (fileName != null ? fileName : "foto") + ".jpg";
+            } else if (mimeType != null && mimeType.contains("png")) {
+                if (!lowerName.endsWith(".png")) fileName = (fileName != null ? fileName : "foto") + ".png";
+            } else if (lowerName.endsWith(".pdf")) {
+                mimeType = "application/pdf";
+            } else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) {
+                mimeType = "image/jpeg";
+            } else if (lowerName.endsWith(".png")) {
+                mimeType = "image/png";
+            } else if (lowerName.endsWith(".docx")) {
+                mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            } else if (lowerName.endsWith(".doc")) {
+                mimeType = "application/msword";
+            }
+
+            if (fileName == null || fileName.trim().isEmpty()) {
+                fileName = "archivo_" + System.currentTimeMillis();
+            }
+
+            InputStream is = resolver.openInputStream(uri);
+            if (is != null) {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                byte[] buffer = new byte[16384];
+                int len;
+                while ((len = is.read(buffer)) != -1) {
+                    baos.write(buffer, 0, len);
+                }
+                is.close();
+
+                byte[] bytes = baos.toByteArray();
+                if (bytes.length > 0) {
+                    SharedItem item = new SharedItem();
+                    item.name = fileName;
+                    item.mimeType = (mimeType != null && !mimeType.isEmpty()) ? mimeType : "application/octet-stream";
+                    item.base64Data = Base64.encodeToString(bytes, Base64.NO_WRAP);
+                    synchronized (pendingSharedItems) {
+                        pendingSharedItems.add(item);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void notifyWebOfSharedFiles() {
+        synchronized (pendingSharedItems) {
+            if (pendingSharedItems.isEmpty()) return;
+        }
+        runOnUiThread(() -> {
+            if (webView != null && isConnectionActive) {
+                webView.evaluateJavascript(
+                    "if (typeof window.checkPendingSharedFiles === 'function') { window.checkPendingSharedFiles(); } else { setTimeout(function() { if (typeof window.checkPendingSharedFiles === 'function') window.checkPendingSharedFiles(); }, 500); }",
+                    null
+                );
+            }
+        });
     }
 
     @Override
