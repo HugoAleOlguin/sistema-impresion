@@ -18,11 +18,33 @@ let activeTunnelProcess = null;
 let currentTunnelUrl = null;
 let tunnelStatus = 'offline'; // offline | starting | online | error
 
+function readEnvToken() {
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN.trim();
+  try {
+    const envPath = path.join(__dirname, '..', '..', '.env');
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      const match = content.match(/^\s*GITHUB_TOKEN\s*=\s*(.+)$/m);
+      if (match) return match[1].trim().replace(/^['"]|['"]$/g, '');
+    }
+  } catch {}
+  return '';
+}
+
+const DEFAULT_GIST_ID = 'b54b662325e0b7066773fc7debc574b6';
+const DEFAULT_KIOSCO_SECRET = 'eltato_1cfb4fdb4212d591808c821f88c6d2a4';
+
 function loadTunnelConfig() {
+  const envToken = readEnvToken();
   try {
     if (fs.existsSync(TUNNEL_CONFIG_FILE)) {
       const raw = fs.readFileSync(TUNNEL_CONFIG_FILE, 'utf8');
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (!parsed.githubToken && envToken) parsed.githubToken = envToken;
+      if (!parsed.gistId) parsed.gistId = DEFAULT_GIST_ID;
+      if (!parsed.kioscoSecret) parsed.kioscoSecret = DEFAULT_KIOSCO_SECRET;
+      if (parsed.autoStartTunnel === undefined) parsed.autoStartTunnel = true;
+      return parsed;
     }
   } catch (err) {
     console.error('[Tunnel] Error al leer tunnel_config.json:', err.message);
@@ -30,8 +52,8 @@ function loadTunnelConfig() {
 
   // Fallback seguro leyendo la configuración vinculada de la app
   const appConfigPath = path.join(__dirname, '..', '..', 'android', 'app_config.json');
-  let fallbackGistId = 'b54b662325e0b7066773fc7debc574b6';
-  let fallbackSecret = 'eltato_1cfb4fdb4212d591808c821f88c6d2a4';
+  let fallbackGistId = DEFAULT_GIST_ID;
+  let fallbackSecret = DEFAULT_KIOSCO_SECRET;
   if (fs.existsSync(appConfigPath)) {
     try {
       const appCfg = JSON.parse(fs.readFileSync(appConfigPath, 'utf8'));
@@ -40,14 +62,21 @@ function loadTunnelConfig() {
     } catch {}
   }
 
-  return {
-    githubToken: process.env.GITHUB_TOKEN || '',
+  const initialConfig = {
+    githubToken: envToken,
     gistId: fallbackGistId,
     kioscoSecret: fallbackSecret,
     autoStartTunnel: true,
     lastUrl: '',
     lastUpdated: null
   };
+
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(TUNNEL_CONFIG_FILE, JSON.stringify(initialConfig, null, 2), 'utf8');
+  } catch (err) {}
+
+  return initialConfig;
 }
 
 function saveTunnelConfig(newConfig) {

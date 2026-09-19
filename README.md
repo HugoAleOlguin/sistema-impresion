@@ -26,9 +26,22 @@ Sistema web y servidor local de automatización de impresiones para kioscos y co
 
 ---
 
-## 📦 Instalación Rápida en Cualquier PC
+## 📦 Instalación y Puesta en Marcha
 
-1. Descargá o cloná este repositorio en la computadora conectada a la impresora:
+### Opción A: Si ya tenés la carpeta en la PC de la casa / local
+Solo necesitas actualizar con Git y arrancar:
+1. Abrí una terminal en la carpeta del proyecto y ejecutá:
+   ```bash
+   git pull
+   ```
+2. Hacé doble clic en:
+   👉 **`iniciar-kiosco.bat`**
+   *(El script detectará automáticamente si falta alguna dependencia o binario y lo instalará solo).*
+
+---
+
+### Opción B: Si es una PC nueva desde cero
+1. Cloná este repositorio en la computadora conectada a la impresora:
    ```bash
    git clone https://github.com/HugoAleOlguin/sistema-impresion.git
    cd sistema-impresion
@@ -37,9 +50,10 @@ Sistema web y servidor local de automatización de impresiones para kioscos y co
    👉 **`instalar-kiosco.bat`**
 
 El instalador se encargará de:
-- Verificar o instalar Node.js.
+- Verificar o instalar Node.js LTS si no está presente.
 - Instalar las dependencias (`npm install`).
-- Descargar el binario de impresión silenciosa (`SumatraPDF.exe`).
+- Descargar el motor de impresión silenciosa (`SumatraPDF.exe`).
+- Descargar el motor de túnel Cloudflare (`cloudflared.exe`).
 - Abrir el puerto `3000` en el Firewall de Windows para permitir la conexión de celulares.
 - Detectar la impresora Epson conectada.
 - Configurar el inicio automático al encender la PC (`shell:startup`) y crear un acceso directo en el Escritorio.
