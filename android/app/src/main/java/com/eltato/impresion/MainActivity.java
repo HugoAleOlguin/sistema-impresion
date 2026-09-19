@@ -68,6 +68,8 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -100,10 +102,10 @@ public class MainActivity extends AppCompatActivity {
     private Uri cameraImageUri;
     private int currentPickerMode = MODE_NONE;
 
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Handler retryHandler = new Handler(Looper.getMainLooper());
     private Runnable retryRunnable;
-    private int retryCountdownSeconds = 5;
+    private int retryCountdownSeconds = 3;
     private boolean isReconnecting = false;
 
     // ── Launcher 1: Documentos (ACTION_OPEN_DOCUMENT) ──────────────────────────
@@ -545,60 +547,135 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // ── Resolución de conexión ─────────────────────────────────────────────────
+    // ── Resolución de conexión ultra-rápida en PARALELO (Happy Eyeballs) ─────────
     private static class RemoteTunnelInfo {
         String url;
         String lanIp;
         String status;
     }
 
+    private final AtomicBoolean connectionResolved = new AtomicBoolean(false);
+
     private void resolveAndConnect() {
         runOnUiThread(() -> {
             cancelPendingRetry();
+            connectionResolved.set(false);
             webView.setVisibility(View.GONE);
             loadingLayout.setVisibility(View.VISIBLE);
             progressBar.setVisibility(View.VISIBLE);
             retryButton.setVisibility(View.GONE);
             statusText.setText(R.string.connecting);
-            subStatusText.setText("Buscando Kiosco en red local (Wi-Fi)...");
+            subStatusText.setText("Conectando con el Kiosco (Wi-Fi / Nube en paralelo)...");
         });
 
+        // 1. Recopilar candidatos de red local (LAN)
+        Set<String> lanCandidates = new LinkedHashSet<>();
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String cachedIp = prefs.getString(KEY_CACHED_IP, null);
+        if (cachedIp != null && !cachedIp.trim().isEmpty() && !cachedIp.startsWith("0.")) {
+            lanCandidates.add(cachedIp.trim());
+        }
+
+        if (defaultLanIp != null && !defaultLanIp.trim().isEmpty()) {
+            lanCandidates.add(defaultLanIp.trim());
+        }
+
+        List<String> devIps = getDeviceIPv4Addresses();
+        for (String devIp : devIps) {
+            int lastDot = devIp.lastIndexOf('.');
+            if (lastDot > 0) {
+                String prefix = devIp.substring(0, lastDot + 1);
+                lanCandidates.add(prefix + "193");
+                lanCandidates.add(prefix + "100");
+                lanCandidates.add(prefix + "1");
+            }
+        }
+        lanCandidates.add("192.168.100.193");
+        lanCandidates.add("192.168.1.193");
+
+        // Total de tareas paralelas = candidatos LAN + 1 tarea para la Nube
+        AtomicInteger pendingTasks = new AtomicInteger(lanCandidates.size() + 1);
+
+        // 2. DISPARAR CANDIDATOS LAN EN PARALELO
+        for (String ip : lanCandidates) {
+            executor.execute(() -> {
+                String target = "http://" + ip + ":" + localPort;
+                if (!connectionResolved.get() && pingCandidate(target, 2000)) {
+                    if (connectionResolved.compareAndSet(false, true)) {
+                        prefs.edit().putString(KEY_CACHED_IP, ip).apply();
+                        runOnUiThread(() -> loadUrlInApp(target, "Conectado por Wi-Fi Local (Alta Velocidad)"));
+                        return;
+                    }
+                }
+                checkAllTasksFinished(pendingTasks);
+            });
+        }
+
+        // 3. DISPARAR EN PARALELO LA RESOLUCIÓN POR NUBE (Gist + Túnel Cloudflare)
         executor.execute(() -> {
-            // 1. Probar red local Wi-Fi primero (máxima velocidad, 0ms latencia)
-            String localUrl = probeLocalLan();
-            if (localUrl != null) {
-                runOnUiThread(() -> loadUrlInApp(localUrl, "Conectado por Wi-Fi Local (Alta Velocidad)"));
-                return;
-            }
+            if (!connectionResolved.get()) {
+                RemoteTunnelInfo info = fetchRemoteTunnelInfo();
+                if (info != null && !connectionResolved.get()) {
+                    // Si el Gist incluye la IP LAN de la PC, probarla también al vuelo
+                    if (info.lanIp != null && !info.lanIp.isEmpty() && !lanCandidates.contains(info.lanIp)) {
+                        String gistLan = "http://" + info.lanIp + ":" + localPort;
+                        if (!connectionResolved.get() && pingCandidate(gistLan, 2000)) {
+                            if (connectionResolved.compareAndSet(false, true)) {
+                                prefs.edit().putString(KEY_CACHED_IP, info.lanIp).apply();
+                                runOnUiThread(() -> loadUrlInApp(gistLan, "Conectado por Wi-Fi Local (Detectado por nube)"));
+                                return;
+                            }
+                        }
+                    }
 
-            // 2. Si no respondió la red local, consultar enlace en la nube
-            runOnUiThread(() -> subStatusText.setText("Consultando enlace del Kiosco en la nube..."));
-            RemoteTunnelInfo info = fetchRemoteTunnelInfo();
-
-            // Si el túnel reportó una IP local de la PC que aún no probamos, verificarla
-            if (info != null && info.lanIp != null && !info.lanIp.isEmpty()) {
-                String lanTarget = "http://" + info.lanIp + ":" + localPort;
-                if (pingServer(lanTarget)) {
-                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putString(KEY_CACHED_IP, info.lanIp).apply();
-                    runOnUiThread(() -> loadUrlInApp(lanTarget, "Conectado por Wi-Fi Local (Detectado por nube)"));
-                    return;
+                    // Probar el túnel Cloudflare
+                    if (info.url != null && info.url.startsWith("https://") && !connectionResolved.get()) {
+                        if (pingCandidate(info.url, 4000)) {
+                            if (connectionResolved.compareAndSet(false, true)) {
+                                runOnUiThread(() -> loadUrlInApp(info.url, "Conectado mediante Túnel Remoto"));
+                                return;
+                            }
+                        }
+                    }
                 }
             }
-
-            // 3. Probar enlace del túnel remoto Cloudflare (para datos móviles)
-            if (info != null && info.url != null && info.url.startsWith("https://")) {
-                runOnUiThread(() -> subStatusText.setText("Verificando túnel seguro Cloudflare..."));
-                if (pingServer(info.url)) {
-                    runOnUiThread(() -> loadUrlInApp(info.url, "Conectado mediante Túnel Remoto"));
-                    return;
-                } else {
-                    startAutoReconnect("El túnel se está reiniciando en la PC...");
-                    return;
-                }
-            }
-
-            startAutoReconnect("No se pudo conectar al Kiosco");
+            checkAllTasksFinished(pendingTasks);
         });
+    }
+
+    private void checkAllTasksFinished(AtomicInteger pendingTasks) {
+        if (pendingTasks.decrementAndGet() <= 0) {
+            if (!connectionResolved.get()) {
+                runOnUiThread(() -> startAutoReconnect("No se pudo conectar al Kiosco"));
+            }
+        }
+    }
+
+    private boolean pingCandidate(String baseUrl, int timeoutMs) {
+        if (baseUrl == null || baseUrl.trim().isEmpty()) return false;
+        HttpURLConnection conn = null;
+        try {
+            String cleanUrl = baseUrl.trim();
+            if (cleanUrl.endsWith("/")) cleanUrl = cleanUrl.substring(0, cleanUrl.length() - 1);
+            String target = cleanUrl + "/api/config?token=" + kioscoSecret;
+
+            URL url = new URL(target);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(timeoutMs);
+            conn.setReadTimeout(timeoutMs);
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "ElTato-Android-App");
+            conn.setRequestProperty("X-Kiosco-Token", kioscoSecret);
+            conn.setInstanceFollowRedirects(true);
+            int code = conn.getResponseCode();
+            return (code == 200);
+        } catch (Exception ignored) {
+            return false;
+        } finally {
+            if (conn != null) {
+                try { conn.disconnect(); } catch (Exception ignored) {}
+            }
+        }
     }
 
     private List<String> getDeviceIPv4Addresses() {
@@ -621,71 +698,6 @@ public class MainActivity extends AppCompatActivity {
             }
         } catch (Exception ignored) {}
         return list;
-    }
-
-    private String probeLocalLan() {
-        Set<String> candidates = new LinkedHashSet<>();
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        String cachedIp = prefs.getString(KEY_CACHED_IP, null);
-        if (cachedIp != null && !cachedIp.trim().isEmpty() && !cachedIp.startsWith("0.")) {
-            candidates.add(cachedIp.trim());
-        }
-
-        // IP por defecto configurada de la PC
-        if (defaultLanIp != null && !defaultLanIp.trim().isEmpty()) {
-            candidates.add(defaultLanIp.trim());
-        }
-
-        // Extraer prefijos de subred de interfaces de red activas (Android 10+ compatible)
-        List<String> deviceIps = getDeviceIPv4Addresses();
-        for (String devIp : deviceIps) {
-            int lastDot = devIp.lastIndexOf('.');
-            if (lastDot > 0) {
-                String prefix = devIp.substring(0, lastDot + 1);
-                candidates.add(prefix + "193");
-                candidates.add(prefix + "100");
-                candidates.add(prefix + "1");
-                candidates.add(prefix + "2");
-                candidates.add(prefix + "10");
-                candidates.add(prefix + "20");
-                candidates.add(prefix + "50");
-            }
-        }
-
-        // Subredes más comunes
-        candidates.add("192.168.100.193");
-        candidates.add("192.168.1.193");
-        candidates.add("192.168.0.193");
-
-        for (String ip : candidates) {
-            String target = "http://" + ip + ":" + localPort;
-            if (pingServer(target)) {
-                prefs.edit().putString(KEY_CACHED_IP, ip).apply();
-                return target;
-            }
-        }
-        return null;
-    }
-
-    private boolean pingServer(String baseUrl) {
-        if (baseUrl == null || baseUrl.isEmpty()) return false;
-        try {
-            String cleanUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-            String target = cleanUrl + "/api/config?token=" + kioscoSecret;
-
-            URL url = new URL(target);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(1500);
-            conn.setReadTimeout(1500);
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("User-Agent", "ElTato-Android-App");
-            conn.setRequestProperty("X-Kiosco-Token", kioscoSecret);
-            int code = conn.getResponseCode();
-            conn.disconnect();
-            return (code == 200);
-        } catch (Exception e) {
-            return false;
-        }
     }
 
     private RemoteTunnelInfo fetchRemoteTunnelInfo() {
@@ -810,7 +822,7 @@ public class MainActivity extends AppCompatActivity {
             retryButton.setText("Reintentar ahora");
             statusText.setText("Reconectando con el Kiosco...");
 
-            retryCountdownSeconds = 5;
+            retryCountdownSeconds = 3;
             updateRetryUi(reason);
         });
     }
