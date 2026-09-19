@@ -9,23 +9,27 @@ const { tunnelSecurityMiddleware } = require('../server/services/securityService
 
 console.log('🧪 Probando módulo de Túnel y Seguridad Cloudflare/GitHub...\n');
 
-// 1. Probar generación de clave secreta
-const secret = generateKioscoSecret();
-assert(secret.startsWith('eltato_'), 'El secret debe comenzar con eltato_');
-assert(secret.length >= 20, 'El secret debe tener longitud adecuada de seguridad');
-console.log('✅ 1. Generación de clave secreta validada:', secret);
+// Guardar copia de seguridad de la configuración original para no sobreescribirla
+const originalConfig = loadTunnelConfig();
 
-// 2. Probar guardado y carga de configuración
-saveTunnelConfig({
-  kioscoSecret: secret,
-  gistId: 'test_gist_12345',
-  autoStartTunnel: false
-});
+try {
+  // 1. Probar generación de clave secreta
+  const secret = generateKioscoSecret();
+  assert(secret.startsWith('eltato_'), 'El secret debe comenzar con eltato_');
+  assert(secret.length >= 20, 'El secret debe tener longitud adecuada de seguridad');
+  console.log('✅ 1. Generación de clave secreta validada:', secret);
 
-const cfg = loadTunnelConfig();
-assert.strictEqual(cfg.kioscoSecret, secret);
-assert.strictEqual(cfg.gistId, 'test_gist_12345');
-console.log('✅ 2. Guardado y persistencia de configuración validada.');
+  // 2. Probar guardado y carga de configuración
+  saveTunnelConfig({
+    kioscoSecret: secret,
+    gistId: 'test_gist_12345',
+    autoStartTunnel: false
+  });
+
+  const cfg = loadTunnelConfig();
+  assert.strictEqual(cfg.kioscoSecret, secret);
+  assert.strictEqual(cfg.gistId, 'test_gist_12345');
+  console.log('✅ 2. Guardado y persistencia de configuración validada.');
 
 // 3. Probar middleware de seguridad con diferentes orígenes de red
 console.log('✅ 3. Probando Middleware de Seguridad:');
@@ -112,10 +116,14 @@ assert(setCookieHeader && setCookieHeader.includes('kiosco_auth='), 'Debe inyect
 console.log('   ✓ Petición externa con query ?token= permitida y cookie de sesión inyectada.');
 
 // 4. Probar status report
-const status = getTunnelStatus();
-assert.strictEqual(typeof status.status, 'string');
-assert.strictEqual(status.kioscoSecretConfigured, true);
-assert.strictEqual(status.gistId, 'test_gist_12345');
-console.log('✅ 4. Reporte de estado getTunnelStatus() validado.');
+  const status = getTunnelStatus();
+  assert.strictEqual(typeof status.status, 'string');
+  assert.strictEqual(status.kioscoSecretConfigured, true);
+  assert.strictEqual(status.gistId, 'test_gist_12345');
+  console.log('✅ 4. Reporte de estado getTunnelStatus() validado.');
 
-console.log('\n🎉 ¡TODAS LAS PRUEBAS DE TÚNEL Y SEGURIDAD PASARON CON ÉXITO!\n');
+  console.log('\n🎉 ¡TODAS LAS PRUEBAS DE TÚNEL Y SEGURIDAD PASARON CON ÉXITO!\n');
+} finally {
+  // Restaurar configuración original
+  saveTunnelConfig(originalConfig);
+}

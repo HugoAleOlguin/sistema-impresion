@@ -101,6 +101,24 @@ if (-not (Test-Path $sumatraExe)) {
 }
 
 # ------------------------------------------------------------------------------
+# Paso 3b: Motor de Tunel Cloudflare (cloudflared)
+# ------------------------------------------------------------------------------
+Write-Host "`n3b. Verificando motor de tunel Cloudflare (cloudflared)..." -ForegroundColor Cyan
+$cfExe = "$ProjectRoot\cloudflared.exe"
+if (-not (Test-Path $cfExe)) {
+    Write-Host "   Descargando cloudflared.exe para tuneles remotos automaticos..." -ForegroundColor Gray
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile $cfExe -UseBasicParsing
+        Write-Host "   [OK] cloudflared.exe descargado en: $cfExe" -ForegroundColor Green
+    } catch {
+        Write-Host "   [!] Error descargando cloudflared: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "   [OK] cloudflared.exe ya esta presente en $cfExe" -ForegroundColor Green
+}
+
+# ------------------------------------------------------------------------------
 # Paso 4: Apertura de Puerto en Firewall de Windows
 # ------------------------------------------------------------------------------
 Write-Host "`n4. Configurando regla en Firewall de Windows (Puerto 3000)..." -ForegroundColor Cyan

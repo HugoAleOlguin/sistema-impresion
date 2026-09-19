@@ -27,11 +27,24 @@ function loadTunnelConfig() {
   } catch (err) {
     console.error('[Tunnel] Error al leer tunnel_config.json:', err.message);
   }
+
+  // Fallback seguro leyendo la configuración vinculada de la app
+  const appConfigPath = path.join(__dirname, '..', '..', 'android', 'app_config.json');
+  let fallbackGistId = 'b54b662325e0b7066773fc7debc574b6';
+  let fallbackSecret = 'eltato_1cfb4fdb4212d591808c821f88c6d2a4';
+  if (fs.existsSync(appConfigPath)) {
+    try {
+      const appCfg = JSON.parse(fs.readFileSync(appConfigPath, 'utf8'));
+      if (appCfg.gistId) fallbackGistId = appCfg.gistId;
+      if (appCfg.kioscoSecret) fallbackSecret = appCfg.kioscoSecret;
+    } catch {}
+  }
+
   return {
-    githubToken: '',
-    gistId: '',
-    kioscoSecret: '',
-    autoStartTunnel: false,
+    githubToken: process.env.GITHUB_TOKEN || '',
+    gistId: fallbackGistId,
+    kioscoSecret: fallbackSecret,
+    autoStartTunnel: true,
     lastUrl: '',
     lastUpdated: null
   };
@@ -52,6 +65,21 @@ function findCloudflaredExecutable() {
   for (const loc of CF_LOCATIONS) {
     if (fs.existsSync(loc)) return loc;
   }
+  
+  // Si no existe, descargar automáticamente con curl nativo de Windows
+  const targetPath = path.join(__dirname, '..', '..', 'cloudflared.exe');
+  console.log('[Tunnel] Descargando cloudflared.exe automáticamente para Windows...');
+  try {
+    const { execFileSync } = require('child_process');
+    execFileSync('curl.exe', ['-L', '-s', '-o', targetPath, 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe'], { timeout: 60000 });
+    if (fs.existsSync(targetPath)) {
+      console.log('[Tunnel] cloudflared.exe descargado exitosamente en:', targetPath);
+      return targetPath;
+    }
+  } catch (err) {
+    console.error('[Tunnel] No se pudo auto-descargar cloudflared.exe:', err.message);
+  }
+
   return 'cloudflared.exe';
 }
 
