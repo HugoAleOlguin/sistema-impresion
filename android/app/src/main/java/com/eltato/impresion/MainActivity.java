@@ -594,11 +594,17 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean pingServer(String baseUrl) {
         try {
-            URL url = new URL(baseUrl + "/api/config");
+            String target = baseUrl + "/api/config";
+            if (baseUrl.startsWith("https://") || baseUrl.contains(".trycloudflare.com")) {
+                target = baseUrl + "/api/config?token=" + kioscoSecret;
+            }
+            URL url = new URL(target);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(1500);
-            conn.setReadTimeout(1500);
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
             conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "ElTato-Android-App");
+            conn.setRequestProperty("X-Kiosco-Token", kioscoSecret);
             int code = conn.getResponseCode();
             conn.disconnect();
             return (code == 200);
@@ -634,9 +640,7 @@ public class MainActivity extends AppCompatActivity {
                     JSONObject tunnelData = new JSONObject(contentStr);
                     String tunnelUrl = tunnelData.optString("url", "");
                     if (tunnelUrl.startsWith("https://")) {
-                        if (pingServer(tunnelUrl)) {
-                            return tunnelUrl;
-                        }
+                        return tunnelUrl;
                     }
                 }
             }
