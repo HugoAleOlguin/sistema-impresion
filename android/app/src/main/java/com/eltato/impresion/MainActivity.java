@@ -75,6 +75,13 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String PREFS_NAME = "ElTatoPrefs";
     private static final String KEY_CACHED_IP = "cached_server_ip";
+    private static final String KEY_CACHED_URL = "cached_kiosco_url";
+    private static final String KEY_CACHED_TIME = "cached_kiosco_time";
+    private static final long MAX_SESSION_VALIDITY_MS = 12 * 60 * 60 * 1000L; // 12 horas
+
+    private boolean isConnectionActive = false;
+    private boolean isResolvingConnection = false;
+    private final AtomicInteger resolutionCounter = new AtomicInteger(0);
 
     // Constantes para identificar qué lanzó el file picker
     private static final int MODE_NONE = 0;
@@ -96,6 +103,14 @@ public class MainActivity extends AppCompatActivity {
     private String defaultLanIp = "192.168.100.193";
     private String githubUsername = "HugoAleOlguin";
     private String githubToken = "";
+    private boolean isDarkMode = false;
+
+    public class WebAppInterface {
+        @android.webkit.JavascriptInterface
+        public void notifyTheme(String theme) {
+            runOnUiThread(() -> isDarkMode = "dark".equalsIgnoreCase(theme));
+        }
+    }
 
     private String currentActiveUrl = "";
     private ValueCallback<Uri[]> uploadMessageCallback;
@@ -212,36 +227,46 @@ public class MainActivity extends AppCompatActivity {
 
         retryButton.setOnClickListener(v -> {
             cancelPendingRetry();
-            resolveAndConnect();
+            startConnectionFlow(true);
         });
 
-        resolveAndConnect();
+        startConnectionFlow(false);
     }
 
-    // ── BottomSheet nativo con opciones dinámicas ─────────────────────────────
-    private void showFilePickerBottomSheet(boolean isImageOnly) {
-        BottomSheetDialog sheet = new BottomSheetDialog(this, R.style.BottomSheetStyle);
+    // ── BottomSheet nativo con opciones dinámicas y Modo Oscuro ──────────────
+    private void showFilePickerBottomSheet(boolean isImageOnly, boolean isDark) {
+        int sheetStyle = isDark ? R.style.BottomSheetStyleDark : R.style.BottomSheetStyleLight;
+        BottomSheetDialog sheet = new BottomSheetDialog(this, sheetStyle);
 
-        // Construir el layout programáticamente (sin XML extra)
+        // Construir el layout programáticamente
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(20), dp(20), dp(20), dp(32));
-        root.setBackgroundResource(android.R.color.transparent);
+
+        // Fondo con borde superior redondeado adaptativo
+        android.graphics.drawable.GradientDrawable sheetBg = new android.graphics.drawable.GradientDrawable();
+        sheetBg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+        sheetBg.setCornerRadii(new float[]{dp(20), dp(20), dp(20), dp(20), 0, 0, 0, 0});
+        sheetBg.setColor(isDark ? 0xFF151E2E : 0xFFFFFFFF);
+        root.setBackground(sheetBg);
 
         // Título
         TextView title = new TextView(this);
         title.setText(isImageOnly ? "Sumar otra foto" : "¿Qué querés imprimir?");
         title.setTextSize(17f);
-        title.setTextColor(0xFF0F172A);
+        title.setTextColor(isDark ? 0xFFF8FAFC : 0xFF0F172A);
         title.setTypeface(null, android.graphics.Typeface.BOLD);
         title.setPadding(dp(4), 0, 0, dp(16));
         root.addView(title);
 
         // Botón DOCUMENTOS (PDF / Word) — sólo visible si no es exclusivo de imágenes
         if (!isImageOnly) {
+            int docBg = isDark ? 0xFF1E293B : 0xFFEFF6FF;
+            int docBorder = 0xFF3B82F6;
+            int docText = isDark ? 0xFF93C5FD : 0xFF1D4ED8;
             Button btnDoc = makeSheetButton(
                     "📄  DOCUMENTOS  —  PDF o Word",
-                    0xFFEFF6FF, 0xFF3B82F6, 0xFF1D4ED8);
+                    docBg, docBorder, docText);
             btnDoc.setOnClickListener(v -> {
                 sheet.dismiss();
                 launchDocumentPicker();
@@ -251,9 +276,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Botón GALERÍA
+        int galBg = isDark ? 0xFF142B20 : 0xFFF0FDF4;
+        int galBorder = 0xFF22C55E;
+        int galText = isDark ? 0xFF86EFAC : 0xFF15803D;
         Button btnGallery = makeSheetButton(
                 "🖼  GALERÍA  —  Fotos del teléfono",
-                0xFFF0FDF4, 0xFF22C55E, 0xFF15803D);
+                galBg, galBorder, galText);
         btnGallery.setOnClickListener(v -> {
             sheet.dismiss();
             launchGalleryPicker();
@@ -262,9 +290,12 @@ public class MainActivity extends AppCompatActivity {
         root.addView(spacer(10));
 
         // Botón CÁMARA
+        int camBg = isDark ? 0xFF2D1B11 : 0xFFFFF7ED;
+        int camBorder = 0xFFF97316;
+        int camText = isDark ? 0xFFFDBA74 : 0xFFC2410C;
         Button btnCamera = makeSheetButton(
                 "📷  CÁMARA  —  Sacar foto ahora",
-                0xFFFFF7ED, 0xFFF97316, 0xFFC2410C);
+                camBg, camBorder, camText);
         btnCamera.setOnClickListener(v -> {
             sheet.dismiss();
             requestCameraAndLaunch();
@@ -272,10 +303,10 @@ public class MainActivity extends AppCompatActivity {
         root.addView(btnCamera);
         root.addView(spacer(8));
 
-        // Botón Cancelar (Botón nativo estilizado)
+        // Botón Cancelar (Botón nativo estilizado adaptativo)
         Button btnCancel = new Button(this);
         btnCancel.setText("Cancelar");
-        btnCancel.setTextColor(0xFF475569);
+        btnCancel.setTextColor(isDark ? 0xFFCBD5E1 : 0xFF475569);
         btnCancel.setTextSize(15f);
         btnCancel.setAllCaps(false);
         btnCancel.setTypeface(null, android.graphics.Typeface.BOLD);
@@ -283,7 +314,7 @@ public class MainActivity extends AppCompatActivity {
         android.graphics.drawable.GradientDrawable cancelBg = new android.graphics.drawable.GradientDrawable();
         cancelBg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
         cancelBg.setCornerRadius(dp(12));
-        cancelBg.setColor(0xFFF1F5F9);
+        cancelBg.setColor(isDark ? 0xFF243042 : 0xFFF1F5F9);
         btnCancel.setBackground(cancelBg);
 
         LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
@@ -300,6 +331,13 @@ public class MainActivity extends AppCompatActivity {
         sheet.setOnDismissListener(dialog -> {
             if (currentPickerMode == MODE_NONE && uploadMessageCallback != null) {
                 deliverResult(null);
+            }
+        });
+
+        sheet.setOnShowListener(dialog -> {
+            View bottomSheet = sheet.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+            if (bottomSheet != null) {
+                bottomSheet.setBackground(sheetBg);
             }
         });
 
@@ -443,20 +481,44 @@ public class MainActivity extends AppCompatActivity {
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
+        webView.addJavascriptInterface(new WebAppInterface(), "KioscoNativeApp");
+
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 if (!isReconnecting) {
-                    loadingLayout.setVisibility(View.GONE);
-                    webView.setVisibility(View.VISIBLE);
+                    isConnectionActive = true;
+                    isResolvingConnection = false;
+
+                    // Actualizar timestamp de última sesión activa
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .edit()
+                            .putLong(KEY_CACHED_TIME, System.currentTimeMillis())
+                            .apply();
+
+                    loadingLayout.animate()
+                            .alpha(0f)
+                            .setDuration(220)
+                            .withEndAction(() -> {
+                                loadingLayout.setVisibility(View.GONE);
+                                loadingLayout.setAlpha(1f);
+                                webView.setVisibility(View.VISIBLE);
+                            });
                 }
             }
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (request != null && request.isForMainFrame()) {
+                    isConnectionActive = false;
                     String desc = (error != null && error.getDescription() != null) ? error.getDescription().toString() : "";
+                    // Invalidar URL guardada para no insistir en un túnel o IP caído
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .edit()
+                            .remove(KEY_CACHED_URL)
+                            .apply();
+
                     if (desc.contains("ERR_NAME_NOT_RESOLVED")) {
                         startAutoReconnect("Túnel no disponible o reconectando...");
                     } else {
@@ -470,6 +532,11 @@ public class MainActivity extends AppCompatActivity {
                 if (request != null && request.isForMainFrame()) {
                     int statusCode = errorResponse != null ? errorResponse.getStatusCode() : 0;
                     if (statusCode >= 500 || statusCode == 404) {
+                        isConnectionActive = false;
+                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                                .edit()
+                                .remove(KEY_CACHED_URL)
+                                .apply();
                         startAutoReconnect("El túnel se está reiniciando (código " + statusCode + ")");
                     }
                 }
@@ -541,13 +608,42 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 final boolean onlyPhotos = isImageOnly;
-                runOnUiThread(() -> showFilePickerBottomSheet(onlyPhotos));
+                webView.evaluateJavascript("document.documentElement.getAttribute('data-theme')", themeVal -> {
+                    boolean isDark = isDarkMode;
+                    if (themeVal != null) {
+                        if (themeVal.contains("dark")) isDark = true;
+                        else if (themeVal.contains("light")) isDark = false;
+                    } else {
+                        isDark = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+                    }
+                    final boolean finalDark = isDark;
+                    runOnUiThread(() -> showFilePickerBottomSheet(onlyPhotos, finalDark));
+                });
                 return true;
             }
         });
     }
 
-    // ── Resolución de conexión ultra-rápida en PARALELO (Happy Eyeballs) ─────────
+    private void startLogoPulse() {
+        View logo = findViewById(R.id.logoContainer);
+        if (logo == null) return;
+        logo.animate()
+                .scaleX(1.06f)
+                .scaleY(1.06f)
+                .setDuration(750)
+                .withEndAction(() -> {
+                    if (!isFinishing() && !isDestroyed()) {
+                        logo.animate()
+                                .scaleX(1.0f)
+                                .scaleY(1.0f)
+                                .setDuration(750)
+                                .withEndAction(this::startLogoPulse);
+                    }
+                });
+    }
+
+    // ── Resolución de conexión ultra-rápida y persistencia de sesión ─────────────
     private static class RemoteTunnelInfo {
         String url;
         String lanIp;
@@ -556,30 +652,51 @@ public class MainActivity extends AppCompatActivity {
 
     private final AtomicBoolean connectionResolved = new AtomicBoolean(false);
 
-    private void resolveAndConnect() {
+    private void startConnectionFlow(boolean forceFresh) {
+        cancelPendingRetry();
+        final int resId = resolutionCounter.incrementAndGet();
+        isResolvingConnection = true;
+        connectionResolved.set(false);
+
         runOnUiThread(() -> {
-            cancelPendingRetry();
-            connectionResolved.set(false);
             webView.setVisibility(View.GONE);
+            loadingLayout.setAlpha(1f);
             loadingLayout.setVisibility(View.VISIBLE);
             progressBar.setVisibility(View.VISIBLE);
             retryButton.setVisibility(View.GONE);
-            statusText.setText(R.string.connecting);
-            subStatusText.setText("Conectando con el Kiosco (Wi-Fi / Nube en paralelo)...");
+            statusText.setText("Iniciando...");
+            subStatusText.setText("Conectando al mostrador");
+            startLogoPulse();
         });
 
-        // 1. Recopilar candidatos de red local (LAN)
-        Set<String> lanCandidates = new LinkedHashSet<>();
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String cachedUrl = prefs.getString(KEY_CACHED_URL, null);
+        long cachedTime = prefs.getLong(KEY_CACHED_TIME, 0L);
+        boolean isSessionFresh = (System.currentTimeMillis() - cachedTime) < MAX_SESSION_VALIDITY_MS;
+
+        List<Runnable> tasks = new ArrayList<>();
+
+        // 1. TAREA ULTRA RÁPIDA: Conectar directo a la URL de la sesión anterior si está fresca
+        if (!forceFresh && cachedUrl != null && !cachedUrl.trim().isEmpty() && isSessionFresh) {
+            final String fastUrl = cachedUrl.trim();
+            tasks.add(() -> {
+                if (resolutionCounter.get() != resId || connectionResolved.get()) return;
+                int timeout = fastUrl.startsWith("http://192.168.") ? 1200 : 2500;
+                if (pingCandidate(fastUrl, timeout)) {
+                    onCandidateWon(fastUrl, "Sesión restaurada al instante", resId);
+                }
+            });
+        }
+
+        // 2. CANDIDATOS LAN (Red Local Wi-Fi)
+        Set<String> lanCandidates = new LinkedHashSet<>();
         String cachedIp = prefs.getString(KEY_CACHED_IP, null);
         if (cachedIp != null && !cachedIp.trim().isEmpty() && !cachedIp.startsWith("0.")) {
             lanCandidates.add(cachedIp.trim());
         }
-
         if (defaultLanIp != null && !defaultLanIp.trim().isEmpty()) {
             lanCandidates.add(defaultLanIp.trim());
         }
-
         List<String> devIps = getDeviceIPv4Addresses();
         for (String devIp : devIps) {
             int lastDot = devIp.lastIndexOf('.');
@@ -593,60 +710,95 @@ public class MainActivity extends AppCompatActivity {
         lanCandidates.add("192.168.100.193");
         lanCandidates.add("192.168.1.193");
 
-        // Total de tareas paralelas = candidatos LAN + 1 tarea para la Nube
-        AtomicInteger pendingTasks = new AtomicInteger(lanCandidates.size() + 1);
-
-        // 2. DISPARAR CANDIDATOS LAN EN PARALELO
         for (String ip : lanCandidates) {
-            executor.execute(() -> {
-                String target = "http://" + ip + ":" + localPort;
-                if (!connectionResolved.get() && pingCandidate(target, 2000)) {
-                    if (connectionResolved.compareAndSet(false, true)) {
-                        prefs.edit().putString(KEY_CACHED_IP, ip).apply();
-                        runOnUiThread(() -> loadUrlInApp(target, "Conectado por Wi-Fi Local (Alta Velocidad)"));
-                        return;
-                    }
+            final String lanUrl = "http://" + ip + ":" + localPort;
+            if (cachedUrl != null && cachedUrl.equals(lanUrl) && !forceFresh) continue;
+
+            tasks.add(() -> {
+                if (resolutionCounter.get() != resId || connectionResolved.get()) return;
+                if (pingCandidate(lanUrl, 1800)) {
+                    onCandidateWon(lanUrl, "Conectado por Wi-Fi Local (Alta Velocidad)", resId);
                 }
-                checkAllTasksFinished(pendingTasks);
             });
         }
 
-        // 3. DISPARAR EN PARALELO LA RESOLUCIÓN POR NUBE (Gist + Túnel Cloudflare)
-        executor.execute(() -> {
-            if (!connectionResolved.get()) {
-                RemoteTunnelInfo info = fetchRemoteTunnelInfo();
-                if (info != null && !connectionResolved.get()) {
-                    // Si el Gist incluye la IP LAN de la PC, probarla también al vuelo
-                    if (info.lanIp != null && !info.lanIp.isEmpty() && !lanCandidates.contains(info.lanIp)) {
-                        String gistLan = "http://" + info.lanIp + ":" + localPort;
-                        if (!connectionResolved.get() && pingCandidate(gistLan, 2000)) {
-                            if (connectionResolved.compareAndSet(false, true)) {
-                                prefs.edit().putString(KEY_CACHED_IP, info.lanIp).apply();
-                                runOnUiThread(() -> loadUrlInApp(gistLan, "Conectado por Wi-Fi Local (Detectado por nube)"));
-                                return;
-                            }
-                        }
+        // 3. RESOLUCIÓN POR NUBE (Gist + Cloudflare Tunnel)
+        tasks.add(() -> {
+            if (resolutionCounter.get() != resId || connectionResolved.get()) return;
+            RemoteTunnelInfo info = fetchRemoteTunnelInfo();
+            if (info != null && resolutionCounter.get() == resId && !connectionResolved.get()) {
+                // Si el Gist incluye una IP LAN que no habíamos considerado
+                if (info.lanIp != null && !info.lanIp.isEmpty() && !lanCandidates.contains(info.lanIp)) {
+                    String gistLan = "http://" + info.lanIp + ":" + localPort;
+                    if (!connectionResolved.get() && pingCandidate(gistLan, 1800)) {
+                        onCandidateWon(gistLan, "Conectado por Wi-Fi Local (Detectado por nube)", resId);
+                        return;
                     }
+                }
 
-                    // Probar el túnel Cloudflare
-                    if (info.url != null && info.url.startsWith("https://") && !connectionResolved.get()) {
-                        if (pingCandidate(info.url, 4000)) {
-                            if (connectionResolved.compareAndSet(false, true)) {
-                                runOnUiThread(() -> loadUrlInApp(info.url, "Conectado mediante Túnel Remoto"));
-                                return;
-                            }
+                // Probar el túnel Cloudflare
+                if (info.url != null && info.url.startsWith("https://") && !connectionResolved.get()) {
+                    if (cachedUrl != null && cachedUrl.equals(info.url) && !forceFresh) {
+                        // Ya se probó en la tarea de sesión previa
+                    } else {
+                        if (pingCandidate(info.url, 3500)) {
+                            onCandidateWon(info.url, "Conectado mediante Túnel Remoto", resId);
                         }
                     }
                 }
             }
-            checkAllTasksFinished(pendingTasks);
         });
+
+        // Lanzar todas las tareas en paralelo protegidas por resId
+        AtomicInteger pendingCounter = new AtomicInteger(tasks.size());
+        for (Runnable task : tasks) {
+            executor.execute(() -> {
+                try {
+                    if (resolutionCounter.get() == resId && !connectionResolved.get()) {
+                        task.run();
+                    }
+                } finally {
+                    checkAllTasksFinished(pendingCounter, resId);
+                }
+            });
+        }
     }
 
-    private void checkAllTasksFinished(AtomicInteger pendingTasks) {
+    private void onCandidateWon(String targetUrl, String connectionType, int resId) {
+        if (resolutionCounter.get() != resId) return;
+        if (connectionResolved.compareAndSet(false, true)) {
+            // Guardar para arranque directo e instantáneo en la próxima sesión
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            prefs.edit()
+                    .putString(KEY_CACHED_URL, targetUrl)
+                    .putLong(KEY_CACHED_TIME, System.currentTimeMillis())
+                    .apply();
+
+            try {
+                Uri uri = Uri.parse(targetUrl);
+                if (uri.getHost() != null && (uri.getHost().startsWith("192.168.") || uri.getHost().startsWith("10."))) {
+                    prefs.edit().putString(KEY_CACHED_IP, uri.getHost()).apply();
+                }
+            } catch (Exception ignored) {}
+
+            runOnUiThread(() -> {
+                if (resolutionCounter.get() == resId) {
+                    loadUrlInApp(targetUrl, connectionType);
+                }
+            });
+        }
+    }
+
+    private void checkAllTasksFinished(AtomicInteger pendingTasks, int resId) {
+        if (resolutionCounter.get() != resId) return;
         if (pendingTasks.decrementAndGet() <= 0) {
-            if (!connectionResolved.get()) {
-                runOnUiThread(() -> startAutoReconnect("No se pudo conectar al Kiosco"));
+            if (resolutionCounter.get() == resId && !connectionResolved.get()) {
+                runOnUiThread(() -> {
+                    if (resolutionCounter.get() == resId && !connectionResolved.get()) {
+                        isResolvingConnection = false;
+                        startAutoReconnect("No se pudo conectar al Kiosco");
+                    }
+                });
             }
         }
     }
@@ -668,7 +820,7 @@ public class MainActivity extends AppCompatActivity {
             conn.setRequestProperty("X-Kiosco-Token", kioscoSecret);
             conn.setInstanceFollowRedirects(true);
             int code = conn.getResponseCode();
-            return (code == 200);
+            return (code >= 200 && code < 400);
         } catch (Exception ignored) {
             return false;
         } finally {
@@ -838,8 +990,8 @@ public class MainActivity extends AppCompatActivity {
             };
             retryHandler.postDelayed(retryRunnable, 1000);
         } else {
-            subStatusText.setText("Buscando nuevo túnel Cloudflare...");
-            resolveAndConnect();
+            subStatusText.setText("Buscando conexión...");
+            startConnectionFlow(true);
         }
     }
 
@@ -859,8 +1011,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        if (isReconnecting || webView.getVisibility() != View.VISIBLE) {
-            resolveAndConnect();
+        // Si la conexión ya está activa y el WebView visible, NO recargar nada (mantiene la sesión sin parpadeos)
+        if (isConnectionActive && webView != null && webView.getVisibility() == View.VISIBLE && !isReconnecting) {
+            return;
+        }
+        // Sólo iniciar resolución si no hay sesión activa ni resolución en marcha
+        if (!isConnectionActive && !isResolvingConnection) {
+            startConnectionFlow(false);
         }
     }
 

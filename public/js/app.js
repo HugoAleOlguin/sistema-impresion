@@ -276,6 +276,11 @@ function setTheme(theme, triggerSound = true) {
   document.documentElement.setAttribute('data-theme', activeTheme);
   localStorage.setItem('app-theme', activeTheme);
 
+  // Notificar al contenedor nativo de Android
+  if (window.KioscoNativeApp && typeof window.KioscoNativeApp.notifyTheme === 'function') {
+    try { window.KioscoNativeApp.notifyTheme(activeTheme); } catch (e) {}
+  }
+
   const metaThemeColor = document.querySelector('meta[name="theme-color"]');
   if (metaThemeColor) {
     metaThemeColor.setAttribute('content', isDark ? '#0f172a' : '#ffffff');

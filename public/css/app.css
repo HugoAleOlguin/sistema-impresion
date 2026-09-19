@@ -2136,6 +2136,47 @@ input {
   border-top-color: #283548;
 }
 
+[data-theme="dark"] .selected-counter {
+  background: #064e3b;
+  color: #86efac;
+}
+
+[data-theme="dark"] .page-status-pill {
+  color: #86efac;
+  background: #064e3b;
+}
+
+[data-theme="dark"] .page-thumb-card.is-excluded .page-status-pill {
+  color: #fca5a5;
+  background: #450a0a;
+}
+
+[data-theme="dark"] .btn-thumb-inspect {
+  background: #1e293b;
+  border-color: #3b82f6;
+  color: #93c5fd;
+}
+
+[data-theme="dark"] .btn-thumb-inspect:active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .page-num-label {
+  color: #f8fafc;
+}
+
+[data-theme="dark"] .btn-remove-loaded {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: #b91c1c;
+  color: #fca5a5;
+}
+
+[data-theme="dark"] .btn-remove-loaded:active {
+  background: rgba(239, 68, 68, 0.35);
+  color: #ffffff;
+}
+
 [data-theme="dark"] .duplex-step-card {
   background: #0f172a;
   border-color: #283548;

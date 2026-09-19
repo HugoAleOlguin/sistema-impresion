@@ -8,15 +8,29 @@
         <item name="android:navigationBarColor">@color/backgroundColor</item>
     </style>
 
-    <!-- Estilo del BottomSheet nativo para el selector de archivos -->
-    <style name="BottomSheetStyle" parent="Theme.MaterialComponents.Light.BottomSheetDialog">
-        <item name="bottomSheetStyle">@style/BottomSheetShapeStyle</item>
+    <!-- Estilo del BottomSheet nativo: Modo Claro -->
+    <style name="BottomSheetStyleLight" parent="Theme.MaterialComponents.Light.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/BottomSheetShapeLight</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:backgroundDimAmount">0.5</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
     </style>
 
-    <style name="BottomSheetShapeStyle" parent="Widget.MaterialComponents.BottomSheet.Modal">
+    <style name="BottomSheetShapeLight" parent="Widget.MaterialComponents.BottomSheet.Modal">
         <item name="android:background">@android:color/white</item>
+        <item name="shapeAppearanceOverlay">@style/RoundedBottomSheet</item>
+    </style>
+
+    <!-- Estilo del BottomSheet nativo: Modo Oscuro -->
+    <style name="BottomSheetStyleDark" parent="Theme.MaterialComponents.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/BottomSheetShapeDark</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:backgroundDimAmount">0.65</item>
+        <item name="android:navigationBarColor">#151E2E</item>
+    </style>
+
+    <style name="BottomSheetShapeDark" parent="Widget.MaterialComponents.BottomSheet.Modal">
+        <item name="android:background">#151E2E</item>
         <item name="shapeAppearanceOverlay">@style/RoundedBottomSheet</item>
     </style>
 
