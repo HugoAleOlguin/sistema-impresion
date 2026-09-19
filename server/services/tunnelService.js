@@ -155,6 +155,22 @@ async function updateGistUrl(token, gistId, url, status = 'online') {
     return false;
   }
 
+  const os = require('os');
+  let lanIp = '192.168.100.193';
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          if (iface.address.startsWith('192.168.') || iface.address.startsWith('10.')) {
+            lanIp = iface.address;
+            break;
+          }
+        }
+      }
+    }
+  } catch {}
+
   const payload = {
     description: 'Kiosco El Tato - Enlace Dinamico de Impresion',
     files: {
@@ -162,6 +178,8 @@ async function updateGistUrl(token, gistId, url, status = 'online') {
         content: JSON.stringify({
           status,
           url: url || '',
+          lanIp,
+          localPort: 3000,
           updatedAt: new Date().toISOString()
         }, null, 2)
       }

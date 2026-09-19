@@ -54,12 +54,18 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Enumeration;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -85,6 +91,9 @@ public class MainActivity extends AppCompatActivity {
     private String gistId = "b54b662325e0b7066773fc7debc574b6";
     private String kioscoSecret = "eltato_1cfb4fdb4212d591808c821f88c6d2a4";
     private int localPort = 3000;
+    private String defaultLanIp = "192.168.100.193";
+    private String githubUsername = "HugoAleOlguin";
+    private String githubToken = "";
 
     private String currentActiveUrl = "";
     private ValueCallback<Uri[]> uploadMessageCallback;
@@ -406,6 +415,9 @@ public class MainActivity extends AppCompatActivity {
             gistId = json.optString("gistId", gistId);
             kioscoSecret = json.optString("kioscoSecret", kioscoSecret);
             localPort = json.optInt("localPort", 3000);
+            defaultLanIp = json.optString("defaultLanIp", defaultLanIp);
+            githubUsername = json.optString("githubUsername", githubUsername);
+            githubToken = json.optString("githubToken", githubToken);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -442,7 +454,12 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (request != null && request.isForMainFrame()) {
-                    startAutoReconnect("Error de conexión (" + error.getDescription() + ")");
+                    String desc = (error != null && error.getDescription() != null) ? error.getDescription().toString() : "";
+                    if (desc.contains("ERR_NAME_NOT_RESOLVED")) {
+                        startAutoReconnect("Túnel no disponible o reconectando...");
+                    } else {
+                        startAutoReconnect("Error de conexión (" + desc + ")");
+                    }
                 }
             }
 
@@ -529,6 +546,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ── Resolución de conexión ─────────────────────────────────────────────────
+    private static class RemoteTunnelInfo {
+        String url;
+        String lanIp;
+        String status;
+    }
+
     private void resolveAndConnect() {
         runOnUiThread(() -> {
             cancelPendingRetry();
@@ -537,50 +560,102 @@ public class MainActivity extends AppCompatActivity {
             progressBar.setVisibility(View.VISIBLE);
             retryButton.setVisibility(View.GONE);
             statusText.setText(R.string.connecting);
-            subStatusText.setText("Buscando servidor en red local (Wi-Fi)...");
+            subStatusText.setText("Buscando Kiosco en red local (Wi-Fi)...");
         });
 
         executor.execute(() -> {
+            // 1. Probar red local Wi-Fi primero (máxima velocidad, 0ms latencia)
             String localUrl = probeLocalLan();
             if (localUrl != null) {
                 runOnUiThread(() -> loadUrlInApp(localUrl, "Conectado por Wi-Fi Local (Alta Velocidad)"));
                 return;
             }
 
-            runOnUiThread(() -> subStatusText.setText("Conectando mediante túnel remoto (Datos Móviles)..."));
-            String remoteUrl = fetchRemoteUrlFromGitHub();
-            if (remoteUrl != null && !remoteUrl.isEmpty()) {
-                runOnUiThread(() -> loadUrlInApp(remoteUrl, "Conectado mediante Túnel Remoto"));
-                return;
+            // 2. Si no respondió la red local, consultar enlace en la nube
+            runOnUiThread(() -> subStatusText.setText("Consultando enlace del Kiosco en la nube..."));
+            RemoteTunnelInfo info = fetchRemoteTunnelInfo();
+
+            // Si el túnel reportó una IP local de la PC que aún no probamos, verificarla
+            if (info != null && info.lanIp != null && !info.lanIp.isEmpty()) {
+                String lanTarget = "http://" + info.lanIp + ":" + localPort;
+                if (pingServer(lanTarget)) {
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putString(KEY_CACHED_IP, info.lanIp).apply();
+                    runOnUiThread(() -> loadUrlInApp(lanTarget, "Conectado por Wi-Fi Local (Detectado por nube)"));
+                    return;
+                }
+            }
+
+            // 3. Probar enlace del túnel remoto Cloudflare (para datos móviles)
+            if (info != null && info.url != null && info.url.startsWith("https://")) {
+                runOnUiThread(() -> subStatusText.setText("Verificando túnel seguro Cloudflare..."));
+                if (pingServer(info.url)) {
+                    runOnUiThread(() -> loadUrlInApp(info.url, "Conectado mediante Túnel Remoto"));
+                    return;
+                } else {
+                    startAutoReconnect("El túnel se está reiniciando en la PC...");
+                    return;
+                }
             }
 
             startAutoReconnect("No se pudo conectar al Kiosco");
         });
     }
 
-    private String probeLocalLan() {
-        List<String> candidates = new ArrayList<>();
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        String cachedIp = prefs.getString(KEY_CACHED_IP, null);
-        if (cachedIp != null) candidates.add(cachedIp);
-
-        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
-        boolean isWiFi = activeNetwork != null && activeNetwork.getType() == ConnectivityManager.TYPE_WIFI;
-
-        if (isWiFi) {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-            if (wm != null) {
-                int ipAddress = wm.getConnectionInfo().getIpAddress();
-                String ipString = Formatter.formatIpAddress(ipAddress);
-                if (ipString != null && ipString.contains(".")) {
-                    String prefix = ipString.substring(0, ipString.lastIndexOf('.') + 1);
-                    candidates.add(prefix + "193");
-                    candidates.add(prefix + "100");
-                    candidates.add(prefix + "1");
+    private List<String> getDeviceIPv4Addresses() {
+        List<String> list = new ArrayList<>();
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface iface = interfaces.nextElement();
+                if (!iface.isUp() || iface.isLoopback()) continue;
+                Enumeration<InetAddress> addresses = iface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (!addr.isLoopbackAddress() && addr instanceof Inet4Address) {
+                        String host = addr.getHostAddress();
+                        if (host != null && !host.isEmpty() && !host.startsWith("127.")) {
+                            list.add(host);
+                        }
+                    }
                 }
             }
+        } catch (Exception ignored) {}
+        return list;
+    }
+
+    private String probeLocalLan() {
+        Set<String> candidates = new LinkedHashSet<>();
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String cachedIp = prefs.getString(KEY_CACHED_IP, null);
+        if (cachedIp != null && !cachedIp.trim().isEmpty() && !cachedIp.startsWith("0.")) {
+            candidates.add(cachedIp.trim());
         }
+
+        // IP por defecto configurada de la PC
+        if (defaultLanIp != null && !defaultLanIp.trim().isEmpty()) {
+            candidates.add(defaultLanIp.trim());
+        }
+
+        // Extraer prefijos de subred de interfaces de red activas (Android 10+ compatible)
+        List<String> deviceIps = getDeviceIPv4Addresses();
+        for (String devIp : deviceIps) {
+            int lastDot = devIp.lastIndexOf('.');
+            if (lastDot > 0) {
+                String prefix = devIp.substring(0, lastDot + 1);
+                candidates.add(prefix + "193");
+                candidates.add(prefix + "100");
+                candidates.add(prefix + "1");
+                candidates.add(prefix + "2");
+                candidates.add(prefix + "10");
+                candidates.add(prefix + "20");
+                candidates.add(prefix + "50");
+            }
+        }
+
+        // Subredes más comunes
+        candidates.add("192.168.100.193");
+        candidates.add("192.168.1.193");
+        candidates.add("192.168.0.193");
 
         for (String ip : candidates) {
             String target = "http://" + ip + ":" + localPort;
@@ -593,15 +668,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean pingServer(String baseUrl) {
+        if (baseUrl == null || baseUrl.isEmpty()) return false;
         try {
-            String target = baseUrl + "/api/config";
-            if (baseUrl.startsWith("https://") || baseUrl.contains(".trycloudflare.com")) {
-                target = baseUrl + "/api/config?token=" + kioscoSecret;
-            }
+            String cleanUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+            String target = cleanUrl + "/api/config?token=" + kioscoSecret;
+
             URL url = new URL(target);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(2000);
+            conn.setConnectTimeout(1500);
+            conn.setReadTimeout(1500);
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "ElTato-Android-App");
             conn.setRequestProperty("X-Kiosco-Token", kioscoSecret);
@@ -613,18 +688,33 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private String fetchRemoteUrlFromGitHub() {
+    private RemoteTunnelInfo fetchRemoteTunnelInfo() {
+        // 1. Intentar vía Raw Gist URL (rápido, sin límites de API REST y sin credenciales)
+        RemoteTunnelInfo info = fetchGistViaRaw();
+        if (info != null && info.url != null && !info.url.isEmpty()) {
+            return info;
+        }
+
+        // 2. Si falla Raw, intentar vía API REST de GitHub
+        return fetchGistViaApi();
+    }
+
+    private RemoteTunnelInfo fetchGistViaApi() {
         try {
             String endpoint = "https://api.github.com/gists/" + gistId + "?t=" + System.currentTimeMillis();
             URL url = new URL(endpoint);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(4000);
-            conn.setReadTimeout(4000);
+            conn.setConnectTimeout(3500);
+            conn.setReadTimeout(3500);
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "ElTato-Android-App");
             conn.setRequestProperty("Accept", "application/vnd.github+json");
+            if (githubToken != null && !githubToken.isEmpty()) {
+                conn.setRequestProperty("Authorization", "Bearer " + githubToken);
+            }
 
-            if (conn.getResponseCode() == 200) {
+            int code = conn.getResponseCode();
+            if (code == 200) {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                 StringBuilder sb = new StringBuilder();
                 String line;
@@ -633,22 +723,59 @@ public class MainActivity extends AppCompatActivity {
                 conn.disconnect();
 
                 JSONObject gistJson = new JSONObject(sb.toString());
-                JSONObject files = gistJson.getJSONObject("files");
-                if (files.has("kiosco_tunnel.json")) {
+                JSONObject files = gistJson.optJSONObject("files");
+                if (files != null && files.has("kiosco_tunnel.json")) {
                     JSONObject fileObj = files.getJSONObject("kiosco_tunnel.json");
                     String contentStr = fileObj.getString("content");
-                    JSONObject tunnelData = new JSONObject(contentStr);
-                    String tunnelUrl = tunnelData.optString("url", "");
-                    if (tunnelUrl.startsWith("https://")) {
-                        return tunnelUrl;
-                    }
+                    return parseTunnelJson(contentStr);
                 }
             }
             conn.disconnect();
         } catch (Exception e) {
-            e.printStackTrace();
+            // Se silencia y pasa al fallback Raw
         }
         return null;
+    }
+
+    private RemoteTunnelInfo fetchGistViaRaw() {
+        try {
+            String rawUrl = "https://gist.githubusercontent.com/" + githubUsername + "/" + gistId + "/raw/kiosco_tunnel.json?t=" + System.currentTimeMillis();
+            URL url = new URL(rawUrl);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(4000);
+            conn.setReadTimeout(4000);
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "ElTato-Android-App");
+
+            int code = conn.getResponseCode();
+            if (code == 200) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) sb.append(line);
+                reader.close();
+                conn.disconnect();
+
+                return parseTunnelJson(sb.toString());
+            }
+            conn.disconnect();
+        } catch (Exception e) {
+            // Silenciar
+        }
+        return null;
+    }
+
+    private RemoteTunnelInfo parseTunnelJson(String jsonStr) {
+        try {
+            JSONObject data = new JSONObject(jsonStr);
+            RemoteTunnelInfo info = new RemoteTunnelInfo();
+            info.url = data.optString("url", "").trim();
+            info.lanIp = data.optString("lanIp", "").trim();
+            info.status = data.optString("status", "").trim();
+            return info;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void loadUrlInApp(String targetUrl, String connectionType) {
@@ -662,8 +789,8 @@ public class MainActivity extends AppCompatActivity {
         cookieManager.flush();
 
         String finalUrl = targetUrl;
-        if (targetUrl.contains(".trycloudflare.com")) {
-            finalUrl = targetUrl + "/?token=" + kioscoSecret;
+        if (!finalUrl.contains("token=")) {
+            finalUrl = finalUrl + (finalUrl.contains("?") ? "&" : "/?") + "token=" + kioscoSecret;
         }
         webView.loadUrl(finalUrl);
     }
