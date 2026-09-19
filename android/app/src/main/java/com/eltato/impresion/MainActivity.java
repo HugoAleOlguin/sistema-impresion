@@ -511,13 +511,25 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (request != null && request.isForMainFrame()) {
-                    isConnectionActive = false;
                     String desc = (error != null && error.getDescription() != null) ? error.getDescription().toString() : "";
-                    // Invalidar URL guardada para no insistir en un túnel o IP caído
-                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                            .edit()
-                            .remove(KEY_CACHED_URL)
-                            .apply();
+
+                    // Ignorar cancelaciones normales de navegación del WebView (evita loop infinito de reintentos)
+                    if (desc.contains("ERR_ABORTED") || desc.contains("net::ERR_ABORTED")) {
+                        return;
+                    }
+                    if (error != null && error.getErrorCode() == WebViewClient.ERROR_CONNECT && desc.isEmpty()) {
+                        return;
+                    }
+
+                    isConnectionActive = false;
+
+                    // Solo invalidar si el host es inexistente o rechazó la conexión
+                    if (desc.contains("ERR_NAME_NOT_RESOLVED") || desc.contains("ERR_CONNECTION_REFUSED") || desc.contains("ERR_ADDRESS_UNREACHABLE")) {
+                        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                                .edit()
+                                .remove(KEY_CACHED_URL)
+                                .apply();
+                    }
 
                     if (desc.contains("ERR_NAME_NOT_RESOLVED")) {
                         startAutoReconnect("Túnel no disponible o reconectando...");
@@ -531,7 +543,8 @@ public class MainActivity extends AppCompatActivity {
             public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
                 if (request != null && request.isForMainFrame()) {
                     int statusCode = errorResponse != null ? errorResponse.getStatusCode() : 0;
-                    if (statusCode >= 500 || statusCode == 404) {
+                    // Solo reconectar si el túnel Cloudflare devolvió 502, 503 o 504 (túnel caído)
+                    if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
                         isConnectionActive = false;
                         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                                 .edit()
@@ -651,6 +664,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private final AtomicBoolean connectionResolved = new AtomicBoolean(false);
+    private RemoteTunnelInfo cachedTunnelInfo = null;
+    private long lastTunnelFetchTime = 0L;
 
     private void startConnectionFlow(boolean forceFresh) {
         cancelPendingRetry();
@@ -676,26 +691,27 @@ public class MainActivity extends AppCompatActivity {
 
         List<Runnable> tasks = new ArrayList<>();
 
-        // 1. TAREA ULTRA RÁPIDA: Conectar directo a la URL de la sesión anterior si está fresca
+        // 1. TAREA PRIORITARIA: Sesión previa guardada
         if (!forceFresh && cachedUrl != null && !cachedUrl.trim().isEmpty() && isSessionFresh) {
             final String fastUrl = cachedUrl.trim();
             tasks.add(() -> {
                 if (resolutionCounter.get() != resId || connectionResolved.get()) return;
-                int timeout = fastUrl.startsWith("http://192.168.") ? 1200 : 2500;
+                int timeout = fastUrl.startsWith("http://192.168.") ? 1200 : 3500;
                 if (pingCandidate(fastUrl, timeout)) {
                     onCandidateWon(fastUrl, "Sesión restaurada al instante", resId);
                 }
             });
         }
 
-        // 2. CANDIDATOS LAN (Red Local Wi-Fi)
+        // 2. CANDIDATOS LAN (Red Local Wi-Fi de alta velocidad)
         Set<String> lanCandidates = new LinkedHashSet<>();
+        // Priorizar IP predeterminada de la PC y en caché
+        if (defaultLanIp != null && !defaultLanIp.trim().isEmpty()) {
+            lanCandidates.add(defaultLanIp.trim());
+        }
         String cachedIp = prefs.getString(KEY_CACHED_IP, null);
         if (cachedIp != null && !cachedIp.trim().isEmpty() && !cachedIp.startsWith("0.")) {
             lanCandidates.add(cachedIp.trim());
-        }
-        if (defaultLanIp != null && !defaultLanIp.trim().isEmpty()) {
-            lanCandidates.add(defaultLanIp.trim());
         }
         List<String> devIps = getDeviceIPv4Addresses();
         for (String devIp : devIps) {
@@ -712,25 +728,25 @@ public class MainActivity extends AppCompatActivity {
 
         for (String ip : lanCandidates) {
             final String lanUrl = "http://" + ip + ":" + localPort;
-            if (cachedUrl != null && cachedUrl.equals(lanUrl) && !forceFresh) continue;
+            if (!forceFresh && cachedUrl != null && cachedUrl.equals(lanUrl)) continue;
 
             tasks.add(() -> {
                 if (resolutionCounter.get() != resId || connectionResolved.get()) return;
-                if (pingCandidate(lanUrl, 1800)) {
+                if (pingCandidate(lanUrl, 1500)) {
                     onCandidateWon(lanUrl, "Conectado por Wi-Fi Local (Alta Velocidad)", resId);
                 }
             });
         }
 
-        // 3. RESOLUCIÓN POR NUBE (Gist + Cloudflare Tunnel)
+        // 3. CANDIDATO NUBE (Túnel Cloudflare + Gist)
         tasks.add(() -> {
             if (resolutionCounter.get() != resId || connectionResolved.get()) return;
-            RemoteTunnelInfo info = fetchRemoteTunnelInfo();
+            RemoteTunnelInfo info = fetchRemoteTunnelInfo(forceFresh);
             if (info != null && resolutionCounter.get() == resId && !connectionResolved.get()) {
-                // Si el Gist incluye una IP LAN que no habíamos considerado
+                // Probar IP LAN de la PC reportada por el túnel
                 if (info.lanIp != null && !info.lanIp.isEmpty() && !lanCandidates.contains(info.lanIp)) {
                     String gistLan = "http://" + info.lanIp + ":" + localPort;
-                    if (!connectionResolved.get() && pingCandidate(gistLan, 1800)) {
+                    if (!connectionResolved.get() && pingCandidate(gistLan, 1500)) {
                         onCandidateWon(gistLan, "Conectado por Wi-Fi Local (Detectado por nube)", resId);
                         return;
                     }
@@ -738,18 +754,14 @@ public class MainActivity extends AppCompatActivity {
 
                 // Probar el túnel Cloudflare
                 if (info.url != null && info.url.startsWith("https://") && !connectionResolved.get()) {
-                    if (cachedUrl != null && cachedUrl.equals(info.url) && !forceFresh) {
-                        // Ya se probó en la tarea de sesión previa
-                    } else {
-                        if (pingCandidate(info.url, 3500)) {
-                            onCandidateWon(info.url, "Conectado mediante Túnel Remoto", resId);
-                        }
+                    if (pingCandidate(info.url, 4000)) {
+                        onCandidateWon(info.url, "Conectado mediante Túnel Remoto", resId);
                     }
                 }
             }
         });
 
-        // Lanzar todas las tareas en paralelo protegidas por resId
+        // Lanzar todas las tareas en paralelo
         AtomicInteger pendingCounter = new AtomicInteger(tasks.size());
         for (Runnable task : tasks) {
             executor.execute(() -> {
@@ -818,9 +830,26 @@ public class MainActivity extends AppCompatActivity {
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "ElTato-Android-App");
             conn.setRequestProperty("X-Kiosco-Token", kioscoSecret);
+            conn.setRequestProperty("Connection", "close");
             conn.setInstanceFollowRedirects(true);
             int code = conn.getResponseCode();
-            return (code >= 200 && code < 400);
+
+            // Consumir stream para evitar contaminación del socket pool en Android
+            InputStream is = null;
+            try {
+                if (code >= 200 && code < 400) {
+                    is = conn.getInputStream();
+                } else {
+                    is = conn.getErrorStream();
+                }
+                if (is != null) {
+                    byte[] buf = new byte[256];
+                    while (is.read(buf) > 0) {}
+                    is.close();
+                }
+            } catch (Exception ignored) {}
+
+            return (code >= 200 && code < 500);
         } catch (Exception ignored) {
             return false;
         } finally {
@@ -852,15 +881,38 @@ public class MainActivity extends AppCompatActivity {
         return list;
     }
 
-    private RemoteTunnelInfo fetchRemoteTunnelInfo() {
-        // 1. Intentar vía Raw Gist URL (rápido, sin límites de API REST y sin credenciales)
-        RemoteTunnelInfo info = fetchGistViaRaw();
-        if (info != null && info.url != null && !info.url.isEmpty()) {
-            return info;
+    private synchronized RemoteTunnelInfo fetchRemoteTunnelInfo(boolean forceFresh) {
+        // Si tenemos info en caché reciente (<2 min) y no forzamos refresco, reusar
+        if (!forceFresh && cachedTunnelInfo != null && (System.currentTimeMillis() - lastTunnelFetchTime) < 120000L) {
+            return cachedTunnelInfo;
         }
 
-        // 2. Si falla Raw, intentar vía API REST de GitHub
-        return fetchGistViaApi();
+        // 1. Intentar vía Raw Gist URL (rápido, sin límites de API REST y sin credenciales)
+        RemoteTunnelInfo info = fetchGistViaRaw();
+        if (info == null || info.url == null || info.url.isEmpty()) {
+            // 2. Si falla Raw, intentar vía API REST de GitHub
+            info = fetchGistViaApi();
+        }
+
+        if (info != null && info.url != null && !info.url.isEmpty()) {
+            cachedTunnelInfo = info;
+            lastTunnelFetchTime = System.currentTimeMillis();
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putString("cached_raw_tunnel_url", info.url)
+                    .putString("cached_raw_tunnel_lan", info.lanIp)
+                    .apply();
+        } else {
+            // Si la red falló, usar el último túnel conocido en SharedPreferences como fallback
+            String savedUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString("cached_raw_tunnel_url", null);
+            if (savedUrl != null && !savedUrl.isEmpty()) {
+                info = new RemoteTunnelInfo();
+                info.url = savedUrl;
+                info.lanIp = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString("cached_raw_tunnel_lan", "");
+                info.status = "online";
+            }
+        }
+        return info;
     }
 
     private RemoteTunnelInfo fetchGistViaApi() {
@@ -868,11 +920,12 @@ public class MainActivity extends AppCompatActivity {
             String endpoint = "https://api.github.com/gists/" + gistId + "?t=" + System.currentTimeMillis();
             URL url = new URL(endpoint);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(3500);
-            conn.setReadTimeout(3500);
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3000);
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "ElTato-Android-App");
             conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("Connection", "close");
             if (githubToken != null && !githubToken.isEmpty()) {
                 conn.setRequestProperty("Authorization", "Bearer " + githubToken);
             }
@@ -896,7 +949,7 @@ public class MainActivity extends AppCompatActivity {
             }
             conn.disconnect();
         } catch (Exception e) {
-            // Se silencia y pasa al fallback Raw
+            // Se silencia y pasa al fallback
         }
         return null;
     }
@@ -906,10 +959,11 @@ public class MainActivity extends AppCompatActivity {
             String rawUrl = "https://gist.githubusercontent.com/" + githubUsername + "/" + gistId + "/raw/kiosco_tunnel.json?t=" + System.currentTimeMillis();
             URL url = new URL(rawUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(4000);
-            conn.setReadTimeout(4000);
+            conn.setConnectTimeout(3000);
+            conn.setReadTimeout(3000);
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "ElTato-Android-App");
+            conn.setRequestProperty("Connection", "close");
 
             int code = conn.getResponseCode();
             if (code == 200) {
