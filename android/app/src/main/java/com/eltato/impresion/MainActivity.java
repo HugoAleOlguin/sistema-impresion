@@ -249,13 +249,25 @@ public class MainActivity extends AppCompatActivity {
         root.addView(btnCamera);
         root.addView(spacer(8));
 
-        // Botón Cancelar (texto)
+        // Botón Cancelar (Botón nativo estilizado)
         Button btnCancel = new Button(this);
         btnCancel.setText("Cancelar");
-        btnCancel.setTextColor(0xFF64748B);
-        btnCancel.setTextSize(14f);
+        btnCancel.setTextColor(0xFF475569);
+        btnCancel.setTextSize(15f);
         btnCancel.setAllCaps(false);
-        btnCancel.setBackgroundResource(android.R.color.transparent);
+        btnCancel.setTypeface(null, android.graphics.Typeface.BOLD);
+
+        android.graphics.drawable.GradientDrawable cancelBg = new android.graphics.drawable.GradientDrawable();
+        cancelBg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+        cancelBg.setCornerRadius(dp(12));
+        cancelBg.setColor(0xFFF1F5F9);
+        btnCancel.setBackground(cancelBg);
+
+        LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        cancelLp.topMargin = dp(6);
+        btnCancel.setLayoutParams(cancelLp);
+
         btnCancel.setOnClickListener(v -> {
             sheet.dismiss();
             deliverResult(null);

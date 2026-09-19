@@ -545,53 +545,82 @@ input {
 }
 
 
-/* Archivo Cargado */
-.file-loaded-row {
+/* Archivo Cargado (Card Nativo Espacioso) */
+.file-loaded-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.file-card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 0;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.file-card-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
 }
 
 .file-type-pill {
-  background: var(--color-blue);
+  background: var(--color-blue, #0284c7);
   color: #ffffff;
   font-size: 0.75rem;
   font-weight: 900;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  border-radius: 10px;
   flex-shrink: 0;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);
 }
 
 .file-type-pill.word {
   background: #2563eb;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
 }
 
 .file-type-pill.photo {
   background: #059669;
+  box-shadow: 0 2px 6px rgba(5, 150, 105, 0.25);
 }
 
-.file-meta {
-  flex: 1;
-  min-width: 0;
+.file-text-col {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
 }
 
-.file-name {
-  font-size: 0.92rem;
-  font-weight: 800;
-  color: var(--text-main);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-stats {
+.file-title-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 2px;
+  min-width: 0;
+}
+
+.file-name {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: var(--text-main, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.file-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
 }
 
 .pill-pages {
@@ -599,62 +628,95 @@ input {
   font-weight: 800;
   color: #0284c7;
   background: #e0f2fe;
-  padding: 1px 8px;
-  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 9999px);
+}
+
+.file-meta-sep {
+  color: #94a3b8;
+  font-weight: bold;
 }
 
 .pill-size {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-dim, #64748b);
 }
 
-.btn-change-file {
-  background: #ffffff;
-  border: 1.5px solid var(--border-card);
-  border-radius: var(--radius-pill);
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  font-weight: 700;
-  padding: 6px 10px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.btn-change-file:active {
-  background: #f1f5f9;
-  color: var(--text-main);
-}
-
-.file-actions-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.btn-add-photo {
-  background: #ecfdf5;
-  border: 1.5px solid #10b981;
-  border-radius: var(--radius-pill);
-  color: #047857;
-  font-size: 0.78rem;
-  font-weight: 800;
-  padding: 6px 10px;
+/* Botón Borrar / Quitar archivo en Paso 1 */
+.btn-remove-loaded {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  background: #fef2f2;
+  border: 1.5px solid #fecaca;
+  color: #dc2626;
+  border-radius: var(--radius-pill, 9999px);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.15s ease;
 }
 
-.btn-add-photo:active {
-  background: #a7f3d0;
+.btn-remove-loaded:active {
+  background: #fee2e2;
+  border-color: #f87171;
   transform: scale(0.96);
+}
+
+/* Fila de Acciones del Archivo */
+.file-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-card, #e2e8f0);
+  flex-wrap: wrap;
+}
+
+.btn-action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill, 9999px);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-action-pill:active {
+  transform: scale(0.96);
+}
+
+.btn-view-file {
+  background: #eff6ff;
+  border: 1.5px solid #bfdbfe;
+  color: #1d4ed8;
+}
+.btn-view-file:active {
+  background: #dbeafe;
+}
+
+.btn-add-more {
+  background: #f0fdf4;
+  border: 1.5px solid #bbf7d0;
+  color: #15803d;
+}
+.btn-add-more:active {
+  background: #dcfce7;
+}
+
+.btn-change-picker {
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  color: #334155;
+}
+.btn-change-picker:active {
+  background: #e2e8f0;
 }
 
 /* Modal Elegir Opción de Foto (Cámara o Galería) */
@@ -911,21 +973,25 @@ input {
 }
 
 .btn-discard {
-  width: 50px;
   height: 50px;
-  background: var(--color-danger-bg);
-  border: 1.5px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
-  color: var(--color-danger);
-  display: flex;
+  background: var(--color-danger-bg, #fef2f2);
+  border: 1.5px solid var(--color-danger-border, #fecaca);
+  border-radius: var(--radius-md, 10px);
+  color: var(--color-danger, #ef4444);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: all 0.15s ease;
 }
 
 .btn-discard:active {
   background: #fee2e2;
-  transform: scale(0.94);
+  transform: scale(0.96);
 }
 
 .btn-discard.is-idle {
@@ -2621,19 +2687,6 @@ input {
   transform: scale(0.97);
 }
 
-/* Botón Descartar / Cancelar en mostrador principal */
-.btn-discard {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 14px;
-}
-
-.btn-discard-label {
-  font-size: 0.85rem;
-  font-weight: 700;
-}
 
 /* Botón Cancelar en modal de Doble Faz */
 .duplex-footer-row {

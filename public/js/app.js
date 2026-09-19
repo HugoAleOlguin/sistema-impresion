@@ -65,6 +65,7 @@ const elements = {
   btnPageSelectorLabel: document.getElementById('btnPageSelectorLabel'),
   btnAddPhoto: document.getElementById('btnAddPhoto'),
   fileSize: document.getElementById('fileSize'),
+  btnRemoveFile: document.getElementById('btnRemoveFile'),
   btnChangeFile: document.getElementById('btnChangeFile'),
   changeFileModal: document.getElementById('changeFileModal'),
   btnCloseChangeFile: document.getElementById('btnCloseChangeFile'),
@@ -416,51 +417,23 @@ function setupEventListeners() {
   on(elements.cameraInput, 'change', handleCameraSelect);
   on(elements.allFilesInput, 'change', handleFileSelect);
 
-  // Modal para cambiar archivo cargado
+  // Botón Quitar archivo cargado (Paso 1)
+  on(elements.btnRemoveFile, 'click', () => {
+    triggerHaptic('tap');
+    resetCurrentJob();
+    showInlineNotice('Archivo quitado', 'info');
+  });
+
+  // Botón Cambiar archivo: dispara directamente el selector sin modal intermedio repetido
   on(elements.btnChangeFile, 'click', () => {
     triggerHaptic('tap');
-    if (elements.changeFileModal) elements.changeFileModal.classList.remove('hidden');
+    if (elements.allFilesInput) elements.allFilesInput.click();
   });
 
-  on(elements.btnCloseChangeFile, 'click', () => {
-    triggerHaptic('tap');
-    if (elements.changeFileModal) elements.changeFileModal.classList.add('hidden');
-  });
-
-  on(elements.changeFileModal, 'click', (e) => {
-    if (e.target === elements.changeFileModal) {
-      elements.changeFileModal.classList.add('hidden');
-    }
-  });
-
-  on(elements.btnChangeDocs, 'click', () => {
-    triggerHaptic('tap');
-    if (elements.changeFileModal) elements.changeFileModal.classList.add('hidden');
-    state.currentPhotoFiles = [];
-    if (elements.docInput) elements.docInput.click();
-  });
-
-  on(elements.btnChangeGallery, 'click', () => {
-    triggerHaptic('tap');
-    if (elements.changeFileModal) elements.changeFileModal.classList.add('hidden');
-    if (elements.galleryInput) elements.galleryInput.click();
-  });
-
-  on(elements.btnChangeCamera, 'click', () => {
-    triggerHaptic('tap');
-    if (elements.changeFileModal) elements.changeFileModal.classList.add('hidden');
-    if (elements.cameraInput) elements.cameraInput.click();
-  });
-
-  // Modal y botones para agregar otra foto
+  // Botón Agregar otra foto: dispara directamente el selector nativo
   on(elements.btnAddPhoto, 'click', () => {
     triggerHaptic('tap');
-    if (elements.addPhotoModal) elements.addPhotoModal.classList.remove('hidden');
-  });
-
-  on(elements.btnCloseAddPhoto, 'click', () => {
-    triggerHaptic('tap');
-    if (elements.addPhotoModal) elements.addPhotoModal.classList.add('hidden');
+    if (elements.addGalleryInput) elements.addGalleryInput.click();
   });
 
   on(elements.addPhotoModal, 'click', (e) => {
@@ -1092,6 +1065,7 @@ async function uploadFiles(filesInput) {
     // Activar botón de imprimir y descartar
     elements.btnApprovePrint.classList.remove('is-idle');
     elements.btnCancelJob.classList.remove('is-idle');
+    elements.btnCancelJob.classList.remove('hidden');
 
     await updateQuote();
     triggerHaptic('select');
@@ -1229,6 +1203,7 @@ function resetCurrentJob() {
   
   elements.btnApprovePrint.classList.add('is-idle');
   elements.btnCancelJob.classList.add('is-idle');
+  elements.btnCancelJob.classList.add('hidden');
   elements.btnDuplex.classList.remove('disabled-hint');
 
   if (elements.confirmCancelModal) {
