@@ -170,13 +170,15 @@ async function fetchCurrentGist(gistId, token = null) {
   if (!gistId) throw new Error('gistId es requerido');
   const headers = {
     'User-Agent': 'Kiosco-ElTato-Sync',
-    'Accept': 'application/vnd.github+json'
+    'Accept': 'application/vnd.github+json',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache'
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token.trim()}`;
   }
 
-  const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
+  const res = await fetch(`https://api.github.com/gists/${gistId}?t=${Date.now()}`, { headers });
   if (!res.ok) {
     throw new Error(`Error al leer Gist (${res.status})`);
   }
