@@ -40,8 +40,24 @@ function saveConfig(newConfig) {
   return merged;
 }
 
+function getInstalledPrinters() {
+  if (process.platform !== 'win32') return [];
+  try {
+    const { execFileSync } = require('child_process');
+    const out = execFileSync('powershell.exe', ['-NoProfile', '-Command', 'Get-Printer | Select-Object -Property Name, PortName | ConvertTo-Json'], { encoding: 'utf8', timeout: 4000 });
+    const parsed = JSON.parse(out);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return [];
+  }
+}
+
 function detectEpsonPrinter() {
   if (process.env.PRINTER_NAME) return process.env.PRINTER_NAME;
+  try {
+    const cfg = loadConfig();
+    if (cfg.printerName) return cfg.printerName;
+  } catch {}
   if (process.platform !== 'win32') return 'EPSON L3560 Series';
   try {
     const { execFileSync } = require('child_process');
@@ -53,9 +69,15 @@ function detectEpsonPrinter() {
   return 'EPSON L3560 Series';
 }
 
+function getPrinterName() {
+  return detectEpsonPrinter();
+}
+
 module.exports = {
   PORT: process.env.PORT || 3000,
   PRINTER_NAME: detectEpsonPrinter(),
+  getPrinterName,
+  getInstalledPrinters,
   MOCK_MODE: process.env.MOCK_MODE === 'true', // Por defecto FALSE (modo producción/impresora real). Pasar MOCK_MODE=true para simular.
   DATA_DIR,
   UPLOADS_DIR,

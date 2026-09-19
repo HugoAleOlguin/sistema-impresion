@@ -13,6 +13,7 @@ server/data/*.log
 # Binarios y ejecutables (se descargan automáticamente con scripts/install.ps1)
 server/bin/*
 !server/bin/.gitkeep
+cloudflared.exe
 
 # Archivos generados durante pruebas locales
 test/*.pdf

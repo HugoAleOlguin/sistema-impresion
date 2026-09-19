@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { exec, execFile } = require('child_process');
-const { MOCK_MODE, PRINTER_NAME, MOCK_PRINTS_DIR } = require('../config');
+const { MOCK_MODE, PRINTER_NAME, MOCK_PRINTS_DIR, getPrinterName } = require('../config');
 const { splitPdfForManualDuplex } = require('./documentService');
 
 const SUMATRA_PATH = path.join(__dirname, '..', 'bin', 'SumatraPDF.exe');
@@ -9,7 +9,8 @@ const SUMATRA_PATH = path.join(__dirname, '..', 'bin', 'SumatraPDF.exe');
 /**
  * Ejecuta la impresión de un archivo PDF en Windows o en modo Mock
  */
-async function sendPdfToPrinter(pdfPath, printerName = PRINTER_NAME, isColor = false, jobCopies = 1) {
+async function sendPdfToPrinter(pdfPath, printerName, isColor = false, jobCopies = 1) {
+  const targetPrinter = printerName || (getPrinterName ? getPrinterName() : PRINTER_NAME);
   if (MOCK_MODE) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const mockLogPath = path.join(MOCK_PRINTS_DIR, `impresion_simulada_${timestamp}.txt`);
@@ -21,7 +22,7 @@ async function sendPdfToPrinter(pdfPath, printerName = PRINTER_NAME, isColor = f
       `Fecha/Hora:   ${new Date().toLocaleString()}`,
       `Archivo:      ${path.basename(pdfPath)}`,
       `Ruta:         ${pdfPath}`,
-      `Impresora:    ${printerName}`,
+      `Impresora:    ${targetPrinter}`,
       `Copias:       ${copies}`,
       `Modo Color:   ${isColor ? 'COLOR' : 'BLANCO Y NEGRO'}`,
       `Tamaño Papel: A4`,
@@ -46,13 +47,13 @@ async function sendPdfToPrinter(pdfPath, printerName = PRINTER_NAME, isColor = f
         'fit'
       ];
       const args = [
-        '-print-to', printerName,
+        '-print-to', targetPrinter,
         '-silent',
         '-print-settings', settings.join(','),
         pdfPath
       ];
 
-      console.log(`[REAL PRINTER] Despachando con SumatraPDF a '${printerName}' (${copies}x, ${isColor ? 'Color' : 'B&N'}): ${path.basename(pdfPath)}`);
+      console.log(`[REAL PRINTER] Despachando con SumatraPDF a '${targetPrinter}' (${copies}x, ${isColor ? 'Color' : 'B&N'}): ${path.basename(pdfPath)}`);
       execFile(SUMATRA_PATH, args, (err) => {
         if (err) {
           console.error('[REAL PRINTER] Error con SumatraPDF:', err.message);
@@ -62,8 +63,8 @@ async function sendPdfToPrinter(pdfPath, printerName = PRINTER_NAME, isColor = f
             error: `Error al imprimir con SumatraPDF: ${err.message}`
           });
         } else {
-          console.log(`[REAL PRINTER] Trabajo enviado exitosamente a '${printerName}'`);
-          resolve({ success: true, mode: 'real', printer: printerName, copies });
+          console.log(`[REAL PRINTER] Trabajo enviado exitosamente a '${targetPrinter}'`);
+          resolve({ success: true, mode: 'real', printer: targetPrinter, copies });
         }
       });
     });
@@ -72,7 +73,7 @@ async function sendPdfToPrinter(pdfPath, printerName = PRINTER_NAME, isColor = f
   // MODO REAL 2 (Fallback): Envío vía PowerShell nativo
   return new Promise((resolve) => {
     const escapedPdf = pdfPath.replace(/'/g, "''");
-    const escapedPrinter = printerName.replace(/'/g, "''");
+    const escapedPrinter = targetPrinter.replace(/'/g, "''");
     const psCmd = `powershell -NoProfile -Command "1..${copies} | ForEach-Object { Start-Process -FilePath '${escapedPdf}' -Verb PrintTo -ArgumentList '${escapedPrinter}' -PassThru | Wait-Process -Timeout 15 }"`;
 
     exec(psCmd, (err) => {
@@ -81,11 +82,11 @@ async function sendPdfToPrinter(pdfPath, printerName = PRINTER_NAME, isColor = f
         resolve({
           success: false,
           mode: 'real',
-          error: `No se pudo enviar a la impresora '${printerName}'. Verifique que el servicio Spooler esté iniciado.`
+          error: `No se pudo enviar a la impresora '${targetPrinter}'. Verifique que el servicio Spooler esté iniciado.`
         });
       } else {
-        console.log(`[REAL PRINTER] Archivo enviado a ${printerName} (${copies}x)`);
-        resolve({ success: true, mode: 'real', printer: printerName, copies });
+        console.log(`[REAL PRINTER] Archivo enviado a ${targetPrinter} (${copies}x)`);
+        resolve({ success: true, mode: 'real', printer: targetPrinter, copies });
       }
     });
   });
@@ -101,7 +102,7 @@ async function processJobPrint(job) {
   if (!job.isDuplex || job.pages <= 1) {
     // Impresión directa Simple Faz
     job.status = 'printing';
-    const result = await sendPdfToPrinter(job.pdfPath, PRINTER_NAME, isColor, copies);
+    const result = await sendPdfToPrinter(job.pdfPath, job.printerName, isColor, copies);
     if (result.success) {
       job.status = 'completed';
       job.completedAt = new Date().toISOString();
@@ -119,7 +120,7 @@ async function processJobPrint(job) {
   job.duplexData = duplexData;
 
   job.status = 'printing_odds';
-  const oddResult = await sendPdfToPrinter(duplexData.oddsPath, PRINTER_NAME, isColor, copies);
+  const oddResult = await sendPdfToPrinter(duplexData.oddsPath, job.printerName, isColor, copies);
 
   if (oddResult.success) {
     // Queda a la espera de que el operador dé vuelta las hojas
@@ -148,7 +149,7 @@ async function continueDuplexPrint(job) {
   const isColor = !!job.isColor;
   const copies = job.copies || 1;
   job.status = 'printing_evens';
-  const evenResult = await sendPdfToPrinter(job.duplexData.evensPath, PRINTER_NAME, isColor, copies);
+  const evenResult = await sendPdfToPrinter(job.duplexData.evensPath, job.printerName, isColor, copies);
 
   if (evenResult.success) {
     job.status = 'completed';

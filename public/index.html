@@ -45,6 +45,12 @@
     </div>
 
     <div class="header-tools">
+      <!-- Botón Modo Oscuro -->
+      <button type="button" class="btn-tool" id="btnToggleTheme" aria-label="Cambiar tema" title="Modo Claro / Oscuro">
+        <span id="themeToggleIcon" style="font-size: 16px; line-height: 1;">☀️</span>
+        <span class="btn-tool-label" id="themeToggleLabel">Tema</span>
+      </button>
+
       <!-- Botón Historial -->
       <button type="button" class="btn-tool" id="btnOpenHistory" aria-label="Ver historial" title="Historial">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -80,10 +86,15 @@
     
     <!-- PASO 1: ELEGIR ARCHIVO -->
     <section class="step-card card-file" id="uploadPanel">
-      <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.rtf,.odt,.txt,image/*" multiple class="visually-hidden">
+      <input type="file" id="docInput" accept=".pdf,.doc,.docx,.rtf,.odt,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/rtf,text/plain,text/rtf" multiple class="visually-hidden">
+      <input type="file" id="galleryInput" accept="image/*" multiple class="visually-hidden">
+      <input type="file" id="cameraInput" accept="image/*" capture="environment" class="visually-hidden">
+      <input type="file" id="allFilesInput" multiple class="visually-hidden">
+      <input type="file" id="addGalleryInput" accept="image/*" multiple class="visually-hidden">
+      <input type="file" id="addCameraInput" accept="image/*" capture="environment" class="visually-hidden">
 
-      <!-- Dropzone con botón grande abajo -->
-      <div class="drop-zone" id="dropZone" role="button" tabindex="0">
+      <!-- Dropzone con 3 botones directos (Documentos, Galería y Cámara) -->
+      <div class="drop-zone" id="dropZone" role="region" aria-label="Zona de carga">
         <div class="drop-header-row">
           <div class="drop-icon">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -96,19 +107,48 @@
               <span class="step-badge badge-step-1">Paso 1</span>
               <strong class="drop-title" id="uploadTitle">Elegir Archivo</strong>
             </div>
-            <span class="drop-sub">PDF, Word o fotos recibidas por WhatsApp</span>
+            <span class="drop-sub">PDF, Word, WhatsApp o Fotos</span>
           </div>
         </div>
 
-        <!-- Botón Grande de Carga Abajo -->
-        <button type="button" class="btn-file-huge" id="btnSelectFileTrigger">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <polyline points="17 8 12 3 7 8"></polyline>
-            <line x1="12" y1="3" x2="12" y2="15"></line>
-          </svg>
-          <span>ELEGIR ARCHIVO AQUÍ</span>
-        </button>
+        <!-- 3 Botones de Selección Directa (evita el bloqueo de Android Photo Picker) -->
+        <div class="upload-options-grid">
+          <button type="button" class="btn-upload-choice btn-choice-docs" id="btnTriggerDocs" title="Abrir selector de documentos PDF o Word">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            <div class="choice-labels">
+              <strong>DOCUMENTOS</strong>
+              <span>PDF o Word</span>
+            </div>
+          </button>
+
+          <button type="button" class="btn-upload-choice btn-choice-photos" id="btnTriggerPhotos" title="Abrir galería de fotos">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <div class="choice-labels">
+              <strong>GALERÍA</strong>
+              <span>Fotos guardadas</span>
+            </div>
+          </button>
+
+          <button type="button" class="btn-upload-choice btn-choice-camera" id="btnCameraTrigger" title="Tomar foto con la cámara del celular">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            <div class="choice-labels">
+              <strong>CÁMARA</strong>
+              <span>Sacar foto</span>
+            </div>
+          </button>
+        </div>
       </div>
 
       <!-- Detalle de archivo cargado -->
@@ -121,22 +161,31 @@
           </div>
           <div class="file-stats">
             <span class="pill-pages" id="filePages">1 pág</span>
-            <button type="button" class="btn-pages-filter hidden" id="btnOpenPageSelector" title="Ver miniaturas y elegir hojas">
+            <button type="button" class="btn-pages-filter" id="btnOpenPageSelector" title="Ver documento o foto">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
               </svg>
-              <span>Elegir páginas</span>
+              <span id="btnPageSelectorLabel">Ver documento</span>
             </button>
             <span class="pill-size" id="fileSize"></span>
           </div>
         </div>
-        <button type="button" class="btn-change-file" id="btnChangeFile" aria-label="Cambiar archivo">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-          </svg>
-          <span>Cambiar</span>
-        </button>
+        <div class="file-actions-group">
+          <button type="button" class="btn-add-photo hidden" id="btnAddPhoto" title="Agregar otra foto (Doble Faz o pág 2)">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>+ Otra foto</span>
+          </button>
+          <button type="button" class="btn-change-file" id="btnChangeFile" aria-label="Cambiar archivo">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+            <span>Cambiar</span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -221,11 +270,12 @@
           </svg>
           <span id="btnApprovePrintText">COBRAR E IMPRIMIR</span>
         </button>
-        <button type="button" class="btn-discard is-idle" id="btnCancelJob" aria-label="Descartar archivo" title="Descartar">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <button type="button" class="btn-discard is-idle" id="btnCancelJob" aria-label="Cancelar impresión" title="Cancelar impresión">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
+          <span class="btn-discard-label">Cancelar</span>
         </button>
       </div>
     </section>
@@ -267,7 +317,7 @@
   <div class="modal-backdrop hidden" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="modal-box">
       <div class="modal-header">
-        <h2 class="modal-title" id="settingsTitle">Tarifas y Conexión</h2>
+        <h2 class="modal-title" id="settingsTitle">Configuración y Tarifas</h2>
         <button type="button" class="btn-icon" id="btnCloseSettings" aria-label="Cerrar">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -283,38 +333,162 @@
               <label for="inputBwSimplex">B&N Simple</label>
               <div class="input-wrap">
                 <span>$</span>
-                <input type="number" id="inputBwSimplex" min="0" step="10" inputmode="numeric" required>
+                <input type="number" id="inputBwSimplex" min="0" step="any" inputmode="decimal" placeholder="0" required>
               </div>
             </div>
             <div class="form-group">
               <label for="inputBwDuplex">B&N Doble Faz</label>
               <div class="input-wrap">
                 <span>$</span>
-                <input type="number" id="inputBwDuplex" min="0" step="10" inputmode="numeric" required>
+                <input type="number" id="inputBwDuplex" min="0" step="any" inputmode="decimal" placeholder="0" required>
               </div>
             </div>
             <div class="form-group">
               <label for="inputColorSimplex">Color Simple</label>
               <div class="input-wrap">
                 <span>$</span>
-                <input type="number" id="inputColorSimplex" min="0" step="10" inputmode="numeric" required>
+                <input type="number" id="inputColorSimplex" min="0" step="any" inputmode="decimal" placeholder="0" required>
               </div>
             </div>
             <div class="form-group">
               <label for="inputColorDuplex">Color Doble Faz</label>
               <div class="input-wrap">
                 <span>$</span>
-                <input type="number" id="inputColorDuplex" min="0" step="10" inputmode="numeric" required>
+                <input type="number" id="inputColorDuplex" min="0" step="any" inputmode="decimal" placeholder="0" required>
               </div>
             </div>
           </div>
-          <button type="submit" class="btn-save-tariffs">Guardar Nuevas Tarifas</button>
+          <div class="form-group" style="margin-top: 14px; margin-bottom: 8px;">
+            <label for="selectPrinter" style="font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--text-secondary, #666);">Impresora Seleccionada:</label>
+            <select id="selectPrinter" style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-card, #d1d5db); background: var(--bg-card, #fff); color: var(--text-main, #111); font-size: 14px; font-family: inherit; outline: none;"></select>
+          </div>
+          <button type="submit" class="btn-save-tariffs">Guardar Configuración</button>
         </form>
 
-        <div class="ips-section">
-          <label>Acceso desde otros celulares:</label>
-          <div id="networkIpsList" class="ips-list"></div>
+        <!-- Selector de Tema (Claro / Oscuro) en Configuración -->
+        <div class="theme-section">
+          <label class="theme-section-label">Apariencia / Tema de la Pantalla:</label>
+          <div class="theme-toggle-group" role="radiogroup" aria-label="Seleccionar tema visual">
+            <button type="button" class="btn-theme-choice" id="btnThemeLight" data-theme="light">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="5"></circle>
+                <line x1="12" y1="1" x2="12" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="23"></line>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                <line x1="1" y1="12" x2="3" y2="12"></line>
+                <line x1="21" y1="12" x2="23" y2="12"></line>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+              </svg>
+              <span>Modo Claro</span>
+            </button>
+            <button type="button" class="btn-theme-choice" id="btnThemeDark" data-theme="dark">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+              </svg>
+              <span>Modo Oscuro</span>
+            </button>
+          </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CAMBIAR ARCHIVO (DOCUMENTOS, GALERÍA O CÁMARA) -->
+  <div class="modal-backdrop hidden" id="changeFileModal" role="dialog" aria-modal="true" aria-labelledby="changeFileTitle">
+    <div class="modal-box modal-box-sm">
+      <div class="modal-header">
+        <h3 class="modal-title" id="changeFileTitle">Cambiar por otro archivo</h3>
+        <button type="button" class="btn-icon" id="btnCloseChangeFile" aria-label="Cerrar">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body add-photo-grid">
+        <button type="button" class="btn-add-choice" id="btnChangeDocs">
+          <div class="choice-circle" style="background: #eff6ff; color: #1d4ed8;">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+          </div>
+          <div class="choice-text-col">
+            <strong>Documento (PDF o Word)</strong>
+            <span>Archivos recibidos o descargados</span>
+          </div>
+        </button>
+        <button type="button" class="btn-add-choice" id="btnChangeGallery">
+          <div class="choice-circle gallery-circle">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+          </div>
+          <div class="choice-text-col">
+            <strong>Fotos de la Galería</strong>
+            <span>Elegir fotos guardadas</span>
+          </div>
+        </button>
+        <button type="button" class="btn-add-choice" id="btnChangeCamera">
+          <div class="choice-circle camera-circle">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+          </div>
+          <div class="choice-text-col">
+            <strong>Tomar con la Cámara</strong>
+            <span>Fotografiar documento ahora</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: AGREGAR OTRA FOTO (CÁMARA O GALERÍA) -->
+  <div class="modal-backdrop hidden" id="addPhotoModal" role="dialog" aria-modal="true" aria-labelledby="addPhotoTitle">
+    <div class="modal-box modal-box-sm">
+      <div class="modal-header">
+        <h3 class="modal-title" id="addPhotoTitle">Agregar otra foto</h3>
+        <button type="button" class="btn-icon" id="btnCloseAddPhoto" aria-label="Cerrar">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body add-photo-grid">
+        <button type="button" class="btn-add-choice" id="btnChoiceCamera">
+          <div class="choice-circle camera-circle">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+          </div>
+          <div class="choice-text-col">
+            <strong>Tomar con la Cámara</strong>
+            <span>Fotografiar otra hoja o reverso</span>
+          </div>
+        </button>
+        <button type="button" class="btn-add-choice" id="btnChoiceGallery">
+          <div class="choice-circle gallery-circle">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+          </div>
+          <div class="choice-text-col">
+            <strong>Elegir de la Galería</strong>
+            <span>Seleccionar otra foto guardada</span>
+          </div>
+        </button>
       </div>
     </div>
   </div>
@@ -344,10 +518,37 @@
             </div>
           </div>
       </div>
-      <div class="modal-footer">
+      <div class="modal-footer duplex-footer-row">
+        <button type="button" class="btn-duplex-cancel" id="btnCancelDuplexJob">
+          Cancelar trabajo
+        </button>
         <button type="button" class="btn-modal-confirm" id="btnConfirmDuplex">
           <span class="spinner hidden" id="duplexSpinner"></span>
           <span>Continuar con páginas pares</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: DOBLE CONFIRMACIÓN DE CANCELACIÓN DE IMPRESIÓN -->
+  <div class="modal-backdrop confirm-cancel-backdrop hidden" id="confirmCancelModal" role="dialog" aria-modal="true" aria-labelledby="confirmCancelTitle">
+    <div class="modal-box modal-box-confirm">
+      <div class="confirm-icon-box">
+        <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="#ef4444" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+      </div>
+      <h3 class="confirm-title" id="confirmCancelTitle">¿Cancelar la impresión?</h3>
+      <p class="confirm-desc" id="confirmCancelDesc">Se descartará el documento cargado y se cancelará la orden de impresión actual.</p>
+      
+      <div class="confirm-actions-row">
+        <button type="button" class="btn-confirm-secondary" id="btnAbortCancel">
+          No, continuar
+        </button>
+        <button type="button" class="btn-confirm-danger" id="btnExecuteCancel">
+          Sí, cancelar impresión
         </button>
       </div>
     </div>
@@ -437,6 +638,110 @@
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 18 15 12 9 6"></polyline>
           </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- OVERLAY/MODAL BLOQUEANTE: CARGA Y PROCESAMIENTO CON PORCENTAJE (Paso 1) -->
+  <div class="modal-backdrop loading-overlay hidden" id="uploadProgressModal" role="dialog" aria-modal="true" aria-labelledby="uploadLoadingTitle">
+    <div class="modal-box modal-box-loading">
+      <div class="loading-visual-area">
+        <!-- SVG Circular Progress Ring with % counter in center -->
+        <div class="circular-progress-wrap">
+          <svg class="progress-ring" viewBox="0 0 120 120" width="120" height="120">
+            <circle class="progress-ring-track" cx="60" cy="60" r="50" stroke-width="8" fill="none" />
+            <circle class="progress-ring-fill" id="uploadProgressRingFill" cx="60" cy="60" r="50" stroke-width="8" fill="none" stroke-linecap="round" />
+          </svg>
+          <div class="progress-ring-center">
+            <span class="progress-percent-number" id="uploadProgressPercent">0%</span>
+            <span class="progress-percent-sub">PROCESANDO</span>
+          </div>
+        </div>
+
+        <!-- Barra de progreso lineal sutil -->
+        <div class="linear-progress-bar">
+          <div class="linear-progress-fill" id="uploadLinearProgressFill"></div>
+        </div>
+      </div>
+
+      <div class="loading-info-area">
+        <h3 class="loading-title" id="uploadLoadingTitle">Procesando archivo...</h3>
+        <p class="loading-stage-text" id="uploadLoadingStage">Analizando páginas y formato...</p>
+        
+        <div class="loading-file-pill" id="uploadLoadingFilePill">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.3">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+          <span class="loading-file-name" id="uploadLoadingFileName">documento.pdf</span>
+        </div>
+
+        <span class="loading-reassurance-note">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          Por favor no cierres la pantalla
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- OVERLAY/MODAL BLOQUEANTE: PROCESANDO IMPRESIÓN (Paso 5) -->
+  <div class="modal-backdrop loading-overlay hidden" id="printProgressModal" role="dialog" aria-modal="true" aria-labelledby="printLoadingTitle">
+    <div class="modal-box modal-box-loading">
+      <div class="loading-visual-area print-visual-area">
+        <!-- Animación de Impresora moderna -->
+        <div class="printer-animation-wrap" id="printerAnimWrap">
+          <div class="printer-paper-in"></div>
+          <div class="printer-body-icon">
+            <svg viewBox="0 0 24 24" width="58" height="58" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9"></polyline>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+              <rect x="6" y="14" width="12" height="8"></rect>
+            </svg>
+            <span class="printer-led"></span>
+          </div>
+          <div class="printer-paper-out"></div>
+        </div>
+
+        <!-- Success checkmark icon (replaces printer on completion) -->
+        <div class="print-success-wrap hidden" id="printSuccessWrap">
+          <div class="success-icon-circle">
+            <svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="loading-info-area">
+        <h3 class="loading-title" id="printLoadingTitle">Enviando a la impresora...</h3>
+        <p class="loading-stage-text" id="printLoadingStage">Conectando con Epson EcoTank L3560...</p>
+
+        <!-- Resumen del trabajo a imprimir -->
+        <div class="print-job-summary-pill" id="printJobSummaryPill">
+          <span id="printJobSummaryText">1 copia • B&N • Simple faz</span>
+        </div>
+
+        <!-- Barra de progreso indeterminado tipo shimmer / escaneo -->
+        <div class="linear-progress-bar print-shimmer-bar" id="printShimmerBar">
+          <div class="print-shimmer-runner"></div>
+        </div>
+
+        <span class="loading-reassurance-note">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          No toques nada, el trabajo está siendo enviado a la impresora
+        </span>
+
+        <button type="button" class="btn-cancel-in-progress" id="btnCancelWhilePrinting">
+          Cancelar envío
         </button>
       </div>
     </div>

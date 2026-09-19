@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const { PORT, UPLOADS_DIR, MOCK_MODE, PRINTER_NAME, loadConfig, saveConfig } = require('./config');
+const { PORT, UPLOADS_DIR, MOCK_MODE, PRINTER_NAME, getPrinterName, getInstalledPrinters, loadConfig, saveConfig } = require('./config');
 const { calculateQuote } = require('./services/pricingService');
 const { inspectDocument, convertImageToA4Pdf, combineImagesToA4Pdf } = require('./services/documentService');
 const { processJobPrint, continueDuplexPrint } = require('./services/printerService');
@@ -30,18 +30,25 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // Límite de 50MB
 });
 
-// Helper para obtener las IPs locales del router
+// Helper para obtener las IPs locales del router (priorizando Wi-Fi/LAN sobre VPNs)
 function getLocalIpAddresses() {
   const interfaces = os.networkInterfaces();
   const ips = [];
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        ips.push(iface.address);
+        ips.push({ name, address: iface.address });
       }
     }
   }
-  return ips;
+  ips.sort((a, b) => {
+    const isALocal = a.address.startsWith('192.168.') || a.address.startsWith('10.');
+    const isBLocal = b.address.startsWith('192.168.') || b.address.startsWith('10.');
+    if (isALocal && !isBLocal) return -1;
+    if (!isALocal && isBLocal) return 1;
+    return 0;
+  });
+  return ips.map(i => i.address);
 }
 
 // -------------------------------------------------------------
@@ -54,15 +61,29 @@ app.get('/api/config', (req, res) => {
   res.json({
     config,
     mockMode: MOCK_MODE,
-    printerName: PRINTER_NAME,
+    printerName: getPrinterName(),
+    availablePrinters: getInstalledPrinters(),
     localIps: getLocalIpAddresses(),
     port: PORT
   });
 });
 
-// 2. Actualizar configuración de precios
+// 2. Actualizar configuración de precios (permite valores específicos de 0 a infinito sin redondeos)
 app.post('/api/config', (req, res) => {
-  const updated = saveConfig(req.body);
+  const payload = {};
+  const priceKeys = ['bw_simplex', 'bw_duplex', 'color_simplex', 'color_duplex'];
+  priceKeys.forEach(key => {
+    if (req.body[key] !== undefined && req.body[key] !== null && req.body[key] !== '') {
+      const parsed = parseFloat(req.body[key]);
+      if (!isNaN(parsed) && parsed >= 0) {
+        payload[key] = Math.round((parsed + Number.EPSILON) * 100) / 100;
+      }
+    }
+  });
+  if (req.body.printerName) {
+    payload.printerName = req.body.printerName;
+  }
+  const updated = saveConfig(payload);
   res.json({ success: true, config: updated });
 });
 

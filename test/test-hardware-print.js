@@ -3,7 +3,8 @@ const path = require('path');
 const { execFile, execSync } = require('child_process');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 
-const PRINTER_NAME = process.env.PRINTER_NAME || 'EPSON L3560 Series (Copiar 1)';
+const { PRINTER_NAME: DETECTED_PRINTER } = require('../server/config');
+const PRINTER_NAME = process.env.PRINTER_NAME || DETECTED_PRINTER || 'EPSON L3560 Series';
 const SUMATRA_PATH = path.join(__dirname, '..', 'server', 'bin', 'SumatraPDF.exe');
 const OUTPUT_PDF = path.join(__dirname, 'test_hardware_a4.pdf');
 

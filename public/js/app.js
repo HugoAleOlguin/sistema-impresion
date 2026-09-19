@@ -10,6 +10,7 @@ const state = {
   copies: 1,
   selectedPages: [], // Números de página 1-based seleccionados
   pdfArrayBuffer: null,
+  currentPhotoFiles: [], // Fotos en memoria si se suben fotos
   currentQuote: null,
   activeJobId: null,
   isOnline: navigator.onLine
@@ -24,7 +25,18 @@ const elements = {
   btnCloseSettings: document.getElementById('btnCloseSettings'),
   settingsModal: document.getElementById('settingsModal'),
   pricesForm: document.getElementById('pricesForm'),
-  networkIpsList: document.getElementById('networkIpsList'),
+  inputBwSimplex: document.getElementById('inputBwSimplex'),
+  inputBwDuplex: document.getElementById('inputBwDuplex'),
+  inputColorSimplex: document.getElementById('inputColorSimplex'),
+  inputColorDuplex: document.getElementById('inputColorDuplex'),
+  selectPrinter: document.getElementById('selectPrinter'),
+
+  // Tema Claro / Oscuro
+  btnToggleTheme: document.getElementById('btnToggleTheme'),
+  themeToggleIcon: document.getElementById('themeToggleIcon'),
+  themeToggleLabel: document.getElementById('themeToggleLabel'),
+  btnThemeLight: document.getElementById('btnThemeLight'),
+  btnThemeDark: document.getElementById('btnThemeDark'),
 
   btnOpenHistory: document.getElementById('btnOpenHistory'),
   btnCloseHistory: document.getElementById('btnCloseHistory'),
@@ -41,15 +53,33 @@ const elements = {
   // Área de Subida
   uploadPanel: document.getElementById('uploadPanel'),
   dropZone: document.getElementById('dropZone'),
-  btnSelectFileTrigger: document.getElementById('btnSelectFileTrigger'),
-  fileInput: document.getElementById('fileInput'),
+  btnTriggerDocs: document.getElementById('btnTriggerDocs'),
+  btnTriggerPhotos: document.getElementById('btnTriggerPhotos'),
+  btnCameraTrigger: document.getElementById('btnCameraTrigger'),
+  docInput: document.getElementById('docInput'),
+  galleryInput: document.getElementById('galleryInput'),
+  cameraInput: document.getElementById('cameraInput'),
+  allFilesInput: document.getElementById('allFilesInput'),
+  addGalleryInput: document.getElementById('addGalleryInput'),
+  addCameraInput: document.getElementById('addCameraInput'),
   fileLoadedInfo: document.getElementById('fileLoadedInfo'),
   fileTypeBadge: document.getElementById('fileTypeBadge'),
   fileName: document.getElementById('fileName'),
   filePages: document.getElementById('filePages'),
   btnOpenPageSelector: document.getElementById('btnOpenPageSelector'),
+  btnPageSelectorLabel: document.getElementById('btnPageSelectorLabel'),
+  btnAddPhoto: document.getElementById('btnAddPhoto'),
   fileSize: document.getElementById('fileSize'),
   btnChangeFile: document.getElementById('btnChangeFile'),
+  changeFileModal: document.getElementById('changeFileModal'),
+  btnCloseChangeFile: document.getElementById('btnCloseChangeFile'),
+  btnChangeDocs: document.getElementById('btnChangeDocs'),
+  btnChangeGallery: document.getElementById('btnChangeGallery'),
+  btnChangeCamera: document.getElementById('btnChangeCamera'),
+  addPhotoModal: document.getElementById('addPhotoModal'),
+  btnCloseAddPhoto: document.getElementById('btnCloseAddPhoto'),
+  btnChoiceCamera: document.getElementById('btnChoiceCamera'),
+  btnChoiceGallery: document.getElementById('btnChoiceGallery'),
 
   // Modos
   btnBw: document.getElementById('btnBw'),
@@ -98,7 +128,33 @@ const elements = {
   detailLoading: document.getElementById('detailLoading'),
   btnDetailPrev: document.getElementById('btnDetailPrev'),
   btnDetailNext: document.getElementById('btnDetailNext'),
-  detailIndicator: document.getElementById('detailIndicator')
+  detailIndicator: document.getElementById('detailIndicator'),
+
+  // Modales Bloqueantes de Carga y Progreso
+  uploadProgressModal: document.getElementById('uploadProgressModal'),
+  uploadProgressRingFill: document.getElementById('uploadProgressRingFill'),
+  uploadProgressPercent: document.getElementById('uploadProgressPercent'),
+  uploadLinearProgressFill: document.getElementById('uploadLinearProgressFill'),
+  uploadLoadingTitle: document.getElementById('uploadLoadingTitle'),
+  uploadLoadingStage: document.getElementById('uploadLoadingStage'),
+  uploadLoadingFileName: document.getElementById('uploadLoadingFileName'),
+
+  printProgressModal: document.getElementById('printProgressModal'),
+  printLoadingTitle: document.getElementById('printLoadingTitle'),
+  printLoadingStage: document.getElementById('printLoadingStage'),
+  printJobSummaryText: document.getElementById('printJobSummaryText'),
+  printShimmerBar: document.getElementById('printShimmerBar'),
+  printerAnimWrap: document.getElementById('printerAnimWrap'),
+  printSuccessWrap: document.getElementById('printSuccessWrap'),
+
+  // Modal de Doble Confirmación de Cancelación
+  confirmCancelModal: document.getElementById('confirmCancelModal'),
+  confirmCancelTitle: document.getElementById('confirmCancelTitle'),
+  confirmCancelDesc: document.getElementById('confirmCancelDesc'),
+  btnAbortCancel: document.getElementById('btnAbortCancel'),
+  btnExecuteCancel: document.getElementById('btnExecuteCancel'),
+  btnCancelDuplexJob: document.getElementById('btnCancelDuplexJob'),
+  btnCancelWhilePrinting: document.getElementById('btnCancelWhilePrinting')
 };
 
 // -------------------------------------------------------------
@@ -174,6 +230,8 @@ function triggerHaptic(type = 'tap') {
 // INICIALIZACIÓN
 // -------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
+  try { initTheme(); } catch (e) { console.error('Error initTheme:', e); }
+
   ['touchstart', 'pointerdown', 'click'].forEach(evt => {
     window.addEventListener(evt, () => initAudio(), { once: true });
   });
@@ -182,11 +240,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js';
   }
 
-  registerServiceWorker();
-  setupNetworkListeners();
-  setupEventListeners();
-  await fetchConfig();
-  await fetchRecentJobs();
+  try { registerServiceWorker(); } catch (e) { console.warn('SW:', e); }
+  try { setupNetworkListeners(); } catch (e) { console.error('Error network:', e); }
+  try { setupEventListeners(); } catch (e) { console.error('Error listeners:', e); }
+
+  // Vital: cargar configuración y lista de impresoras (aislado para garantizar ejecución)
+  try {
+    await fetchConfig();
+  } catch (e) {
+    console.error('Error crítico fetchConfig:', e);
+  }
+
+  try {
+    await fetchRecentJobs();
+  } catch (e) {
+    console.warn('Error fetchRecentJobs:', e);
+  }
 
   setInterval(() => {
     if (document.visibilityState === 'visible' && state.isOnline) {
@@ -194,6 +263,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }, 15000);
 });
+
+// -------------------------------------------------------------
+// GESTIÓN DE TEMA (CLARO / OSCURO)
+// MODO CLARO PREDETERMINADO
+// -------------------------------------------------------------
+function initTheme() {
+  const savedTheme = localStorage.getItem('app-theme') || 'light';
+  setTheme(savedTheme, false);
+}
+
+function setTheme(theme, triggerSound = true) {
+  const isDark = (theme === 'dark');
+  const activeTheme = isDark ? 'dark' : 'light';
+
+  document.documentElement.setAttribute('data-theme', activeTheme);
+  localStorage.setItem('app-theme', activeTheme);
+
+  const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (metaThemeColor) {
+    metaThemeColor.setAttribute('content', isDark ? '#0f172a' : '#ffffff');
+  }
+
+  if (elements.btnThemeLight) {
+    elements.btnThemeLight.classList.toggle('active', !isDark);
+  }
+  if (elements.btnThemeDark) {
+    elements.btnThemeDark.classList.toggle('active', isDark);
+  }
+
+  if (elements.themeToggleIcon) {
+    elements.themeToggleIcon.textContent = isDark ? '🌙' : '☀️';
+  }
+  if (elements.themeToggleLabel) {
+    elements.themeToggleLabel.textContent = isDark ? 'Oscuro' : 'Claro';
+  }
+
+  if (triggerSound) {
+    triggerHaptic('select');
+  }
+}
 
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
@@ -231,111 +340,205 @@ async function fetchConfig() {
     const data = await res.json();
     state.config = data.config;
 
-    if (data.mockMode) {
-      elements.statusDot.className = 'status-dot mock';
-      elements.statusBadge.textContent = 'Simulación';
-    } else {
-      elements.statusDot.className = 'status-dot real';
-      elements.statusBadge.textContent = 'Epson Lista';
+    if (elements.statusDot && elements.statusBadge) {
+      if (data.mockMode) {
+        elements.statusDot.className = 'status-dot mock';
+        elements.statusBadge.textContent = 'Simulación';
+      } else {
+        elements.statusDot.className = 'status-dot real';
+        elements.statusBadge.textContent = 'Epson Lista';
+      }
     }
 
-    document.getElementById('inputBwSimplex').value = data.config.bw_simplex;
-    document.getElementById('inputBwDuplex').value = data.config.bw_duplex;
-    document.getElementById('inputColorSimplex').value = data.config.color_simplex;
-    document.getElementById('inputColorDuplex').value = data.config.color_duplex;
+    const inputBwSimplex = elements.inputBwSimplex || document.getElementById('inputBwSimplex');
+    const inputBwDuplex = elements.inputBwDuplex || document.getElementById('inputBwDuplex');
+    const inputColorSimplex = elements.inputColorSimplex || document.getElementById('inputColorSimplex');
+    const inputColorDuplex = elements.inputColorDuplex || document.getElementById('inputColorDuplex');
 
-    renderNetworkIps(data.localIps, data.port);
+    if (inputBwSimplex && data.config) inputBwSimplex.value = data.config.bw_simplex ?? 100;
+    if (inputBwDuplex && data.config) inputBwDuplex.value = data.config.bw_duplex ?? 150;
+    if (inputColorSimplex && data.config) inputColorSimplex.value = data.config.color_simplex ?? 200;
+    if (inputColorDuplex && data.config) inputColorDuplex.value = data.config.color_duplex ?? 250;
+
+    const selectPrinter = elements.selectPrinter || document.getElementById('selectPrinter');
+    if (selectPrinter) {
+      selectPrinter.innerHTML = '';
+      const printers = Array.isArray(data.availablePrinters) ? [...data.availablePrinters] : [];
+      if (printers.length === 0 && (data.printerName || (data.config && data.config.printerName))) {
+        printers.push({ Name: data.printerName || data.config.printerName, PortName: '' });
+      }
+
+      const activePrinterName = (data.config && data.config.printerName) || data.printerName || '';
+
+      printers.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.Name;
+        opt.textContent = p.PortName ? `${p.Name} (${p.PortName})` : p.Name;
+        if (p.Name === activePrinterName) {
+          opt.selected = true;
+        }
+        selectPrinter.appendChild(opt);
+      });
+
+      if (!selectPrinter.value && selectPrinter.options.length > 0) {
+        selectPrinter.selectedIndex = 0;
+      }
+    }
   } catch (err) {
     console.error('Error config:', err);
-    elements.statusDot.className = 'status-dot disconnected';
-    elements.statusBadge.textContent = 'Desconectado';
-  }
-}
-
-function renderNetworkIps(ips, port) {
-  elements.networkIpsList.innerHTML = '';
-  if (ips && ips.length > 0) {
-    ips.forEach(ip => {
-      const url = `http://${ip}:${port}`;
-      const div = document.createElement('div');
-      div.className = 'ip-row';
-      div.innerHTML = `
-        <a href="${url}" target="_blank" class="ip-link">${url}</a>
-        <button type="button" class="btn-copy" data-url="${url}">Copiar</button>
-      `;
-      elements.networkIpsList.appendChild(div);
-    });
-
-    elements.networkIpsList.querySelectorAll('.btn-copy').forEach(btn => {
-      btn.addEventListener('click', () => {
-        triggerHaptic('tap');
-        const urlToCopy = btn.getAttribute('data-url');
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText(urlToCopy).then(() => {
-            showInlineNotice('Dirección copiada para enviar por WhatsApp', 'success');
-          });
-        }
-      });
-    });
-  } else {
-    elements.networkIpsList.innerHTML = `<div class="ip-row"><span class="ip-link">http://localhost:${port}</span></div>`;
+    if (elements.statusDot) elements.statusDot.className = 'status-dot disconnected';
+    if (elements.statusBadge) elements.statusBadge.textContent = 'Desconectado';
   }
 }
 
 // -------------------------------------------------------------
-// EVENT LISTENERS
+// EVENT LISTENERS (DEFENSIVO: IMPOSIBLE QUE UN ELEMENTO FALTE Y ROMPA LA APP)
 // -------------------------------------------------------------
+function on(el, event, handler, options) {
+  if (!el) return;
+  el.addEventListener(event, handler, options);
+}
+
 function setupEventListeners() {
-  const triggerFile = () => {
-    triggerHaptic('tap');
-    elements.fileInput.click();
-  };
-
-  elements.dropZone.addEventListener('click', triggerFile);
-  elements.btnSelectFileTrigger.addEventListener('click', (e) => {
+  // Disparadores directos del DropZone (Paso 1)
+  on(elements.btnTriggerDocs, 'click', (e) => {
     e.stopPropagation();
-    triggerFile();
+    triggerHaptic('tap');
+    state.currentPhotoFiles = [];
+    if (elements.docInput) elements.docInput.click();
   });
-  elements.fileInput.addEventListener('change', handleFileSelect);
-  elements.btnChangeFile.addEventListener('click', triggerFile);
 
-  // Soporte de arrastrar y soltar (Drag & Drop) para múltiples archivos
-  ['dragenter', 'dragover'].forEach(name => {
-    elements.dropZone.addEventListener(name, (e) => {
-      e.preventDefault();
-      elements.dropZone.classList.add('drag-over');
-    });
+  on(elements.btnTriggerPhotos, 'click', (e) => {
+    e.stopPropagation();
+    triggerHaptic('tap');
+    if (elements.galleryInput) elements.galleryInput.click();
   });
-  ['dragleave', 'drop'].forEach(name => {
-    elements.dropZone.addEventListener(name, (e) => {
-      e.preventDefault();
-      elements.dropZone.classList.remove('drag-over');
-    });
+
+  on(elements.btnCameraTrigger, 'click', (e) => {
+    e.stopPropagation();
+    triggerHaptic('tap');
+    if (elements.cameraInput) elements.cameraInput.click();
   });
-  elements.dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      uploadFiles(e.dataTransfer.files);
+
+  // Clic en la zona general del dropzone (fuera de los botones de selección directa)
+  on(elements.dropZone, 'click', (e) => {
+    if (e.target.closest('.btn-upload-choice')) return;
+    triggerHaptic('tap');
+    if (elements.docInput) elements.docInput.click();
+  });
+
+  // Listeners de cambio en los inputs de archivos
+  on(elements.docInput, 'change', handleFileSelect);
+  on(elements.galleryInput, 'change', handleFileSelect);
+  on(elements.cameraInput, 'change', handleCameraSelect);
+  on(elements.allFilesInput, 'change', handleFileSelect);
+
+  // Modal para cambiar archivo cargado
+  on(elements.btnChangeFile, 'click', () => {
+    triggerHaptic('tap');
+    if (elements.changeFileModal) elements.changeFileModal.classList.remove('hidden');
+  });
+
+  on(elements.btnCloseChangeFile, 'click', () => {
+    triggerHaptic('tap');
+    if (elements.changeFileModal) elements.changeFileModal.classList.add('hidden');
+  });
+
+  on(elements.changeFileModal, 'click', (e) => {
+    if (e.target === elements.changeFileModal) {
+      elements.changeFileModal.classList.add('hidden');
     }
   });
 
+  on(elements.btnChangeDocs, 'click', () => {
+    triggerHaptic('tap');
+    if (elements.changeFileModal) elements.changeFileModal.classList.add('hidden');
+    state.currentPhotoFiles = [];
+    if (elements.docInput) elements.docInput.click();
+  });
+
+  on(elements.btnChangeGallery, 'click', () => {
+    triggerHaptic('tap');
+    if (elements.changeFileModal) elements.changeFileModal.classList.add('hidden');
+    if (elements.galleryInput) elements.galleryInput.click();
+  });
+
+  on(elements.btnChangeCamera, 'click', () => {
+    triggerHaptic('tap');
+    if (elements.changeFileModal) elements.changeFileModal.classList.add('hidden');
+    if (elements.cameraInput) elements.cameraInput.click();
+  });
+
+  // Modal y botones para agregar otra foto
+  on(elements.btnAddPhoto, 'click', () => {
+    triggerHaptic('tap');
+    if (elements.addPhotoModal) elements.addPhotoModal.classList.remove('hidden');
+  });
+
+  on(elements.btnCloseAddPhoto, 'click', () => {
+    triggerHaptic('tap');
+    if (elements.addPhotoModal) elements.addPhotoModal.classList.add('hidden');
+  });
+
+  on(elements.addPhotoModal, 'click', (e) => {
+    if (e.target === elements.addPhotoModal) {
+      elements.addPhotoModal.classList.add('hidden');
+    }
+  });
+
+  on(elements.btnChoiceCamera, 'click', () => {
+    triggerHaptic('tap');
+    if (elements.addPhotoModal) elements.addPhotoModal.classList.add('hidden');
+    if (elements.addCameraInput) elements.addCameraInput.click();
+  });
+
+  on(elements.btnChoiceGallery, 'click', () => {
+    triggerHaptic('tap');
+    if (elements.addPhotoModal) elements.addPhotoModal.classList.add('hidden');
+    if (elements.addGalleryInput) elements.addGalleryInput.click();
+  });
+
+  on(elements.addCameraInput, 'change', handleAddPhotosSelected);
+  on(elements.addGalleryInput, 'change', handleAddPhotosSelected);
+
+  // Soporte de arrastrar y soltar (Drag & Drop) para múltiples archivos
+  if (elements.dropZone) {
+    ['dragenter', 'dragover'].forEach(name => {
+      elements.dropZone.addEventListener(name, (e) => {
+        e.preventDefault();
+        elements.dropZone.classList.add('drag-over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+      elements.dropZone.addEventListener(name, (e) => {
+        e.preventDefault();
+        elements.dropZone.classList.remove('drag-over');
+      });
+    });
+    elements.dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        uploadFiles(e.dataTransfer.files);
+      }
+    });
+  }
+
   // Toggles de Color
-  elements.btnBw.addEventListener('click', () => {
+  on(elements.btnBw, 'click', () => {
     triggerHaptic('select');
     setOption('color', false);
   });
-  elements.btnColor.addEventListener('click', () => {
+  on(elements.btnColor, 'click', () => {
     triggerHaptic('select');
     setOption('color', true);
   });
 
   // Toggles de Caras
-  elements.btnSimplex.addEventListener('click', () => {
+  on(elements.btnSimplex, 'click', () => {
     triggerHaptic('select');
     setOption('duplex', false);
   });
-
-  elements.btnDuplex.addEventListener('click', () => {
+  on(elements.btnDuplex, 'click', () => {
     const pageCount = state.selectedPages.length || (state.loadedFile ? state.loadedFile.pageCount : 1);
     if (pageCount <= 1) {
       triggerHaptic('warning');
@@ -347,112 +550,142 @@ function setupEventListeners() {
   });
 
   // Selector de Copias (Paso 4)
-  elements.btnDecCopies.addEventListener('click', () => {
+  on(elements.btnDecCopies, 'click', () => {
     if (state.copies > 1) {
       triggerHaptic('tap');
       state.copies--;
-      elements.copiesDisplay.textContent = state.copies;
+      if (elements.copiesDisplay) elements.copiesDisplay.textContent = state.copies;
       updateQuote();
     }
   });
-
-  elements.btnIncCopies.addEventListener('click', () => {
+  on(elements.btnIncCopies, 'click', () => {
     if (state.copies < 50) {
       triggerHaptic('tap');
       state.copies++;
-      elements.copiesDisplay.textContent = state.copies;
+      if (elements.copiesDisplay) elements.copiesDisplay.textContent = state.copies;
       updateQuote();
     }
   });
 
-  // Selector Visual de Páginas (Paso 1)
-  elements.btnOpenPageSelector.addEventListener('click', () => {
+  // Selector Visual de Páginas o Visor directo (Paso 1)
+  on(elements.btnOpenPageSelector, 'click', () => {
     triggerHaptic('tap');
-    openPageSelector();
+    const totalPages = (state.loadedFile && state.loadedFile.pageCount) ? state.loadedFile.pageCount : 1;
+    if (totalPages === 1) {
+      openPageDetail(1);
+    } else {
+      openPageSelector();
+    }
   });
 
-  elements.btnClosePageSelector.addEventListener('click', () => {
+  on(elements.btnClosePageSelector, 'click', () => {
     triggerHaptic('tap');
-    elements.pageSelectorModal.classList.add('hidden');
+    if (elements.pageSelectorModal) elements.pageSelectorModal.classList.add('hidden');
   });
 
-  elements.btnSelectAllPages.addEventListener('click', () => {
+  on(elements.btnSelectAllPages, 'click', () => {
     triggerHaptic('tap');
     toggleAllModalPages(true);
   });
 
-  elements.btnDeselectAllPages.addEventListener('click', () => {
+  on(elements.btnDeselectAllPages, 'click', () => {
     triggerHaptic('tap');
     toggleAllModalPages(false);
   });
 
-  elements.btnApplyPageSelection.addEventListener('click', applyPageSelection);
+  on(elements.btnApplyPageSelection, 'click', applyPageSelection);
 
-  elements.pageSelectorModal.addEventListener('click', (e) => {
+  on(elements.pageSelectorModal, 'click', (e) => {
     if (e.target === elements.pageSelectorModal) {
       elements.pageSelectorModal.classList.add('hidden');
     }
   });
 
   // Botón Principal de Imprimir
-  elements.btnApprovePrint.addEventListener('click', handleApprovePrint);
+  on(elements.btnApprovePrint, 'click', handleApprovePrint);
 
-  // Botón Descartar
-  elements.btnCancelJob.addEventListener('click', () => {
+  // Botón Cancelar Impresión (con doble confirmación)
+  on(elements.btnCancelJob, 'click', () => {
     if (!state.loadedFile) return;
-    triggerHaptic('warning');
-    resetCurrentJob();
-    showInlineNotice('Archivo descartado', 'info');
+    promptCancelConfirmation('main');
+  });
+
+  // Botón Cancelar en modal Dúplex (con doble confirmación)
+  on(elements.btnCancelDuplexJob, 'click', () => {
+    promptCancelConfirmation('duplex');
+  });
+
+  // Botón Cancelar durante envío de impresión (con doble confirmación)
+  on(elements.btnCancelWhilePrinting, 'click', () => {
+    promptCancelConfirmation('printing');
+  });
+
+  // Acciones del Modal de Doble Confirmación
+  on(elements.btnAbortCancel, 'click', abortCancel);
+  on(elements.btnExecuteCancel, 'click', executeCancel);
+  on(elements.confirmCancelModal, 'click', (e) => {
+    if (e.target === elements.confirmCancelModal) {
+      abortCancel();
+    }
   });
 
   // Historial lateral
-  elements.btnOpenHistory.addEventListener('click', () => {
+  on(elements.btnOpenHistory, 'click', () => {
     triggerHaptic('tap');
     fetchRecentJobs();
-    elements.historyDrawer.classList.remove('hidden');
+    if (elements.historyDrawer) elements.historyDrawer.classList.remove('hidden');
   });
-  elements.btnCloseHistory.addEventListener('click', () => {
+  on(elements.btnCloseHistory, 'click', () => {
     triggerHaptic('tap');
-    elements.historyDrawer.classList.add('hidden');
+    if (elements.historyDrawer) elements.historyDrawer.classList.add('hidden');
   });
-  elements.btnRefreshJobs.addEventListener('click', () => {
+  on(elements.btnRefreshJobs, 'click', () => {
     triggerHaptic('tap');
     fetchRecentJobs();
   });
-  elements.historyDrawer.addEventListener('click', (e) => {
+  on(elements.historyDrawer, 'click', (e) => {
     if (e.target === elements.historyDrawer) {
       elements.historyDrawer.classList.add('hidden');
     }
   });
 
-  // Configuración
-  elements.btnOpenSettings.addEventListener('click', () => {
+  // Configuración (con auto-recuperación y carga fresca de impresoras)
+  on(elements.btnOpenSettings, 'click', async () => {
     triggerHaptic('tap');
-    elements.settingsModal.classList.remove('hidden');
+    if (elements.settingsModal) elements.settingsModal.classList.remove('hidden');
+    await fetchConfig();
   });
-  elements.btnCloseSettings.addEventListener('click', () => {
+  on(elements.btnCloseSettings, 'click', () => {
     triggerHaptic('tap');
-    elements.settingsModal.classList.add('hidden');
+    if (elements.settingsModal) elements.settingsModal.classList.add('hidden');
   });
-  elements.pricesForm.addEventListener('submit', handleSavePrices);
-  elements.settingsModal.addEventListener('click', (e) => {
+  on(elements.pricesForm, 'submit', handleSavePrices);
+  on(elements.settingsModal, 'click', (e) => {
     if (e.target === elements.settingsModal) {
       elements.settingsModal.classList.add('hidden');
     }
   });
 
-  // Modal Dúplex
-  elements.btnConfirmDuplex.addEventListener('click', handleConfirmDuplex);
-
-  // Modal Visor de Detalle (Nativo)
-  elements.btnClosePageDetail.addEventListener('click', () => {
-    triggerHaptic('tap');
-    elements.pageDetailModal.classList.add('hidden');
+  // Selector y conmutador de Tema Claro / Oscuro
+  on(elements.btnThemeLight, 'click', () => setTheme('light'));
+  on(elements.btnThemeDark, 'click', () => setTheme('dark'));
+  on(elements.btnToggleTheme, 'click', () => {
+    const current = localStorage.getItem('app-theme') || 'light';
+    setTheme(current === 'dark' ? 'light' : 'dark');
   });
 
-  elements.btnToggleDetailSelection.addEventListener('click', toggleDetailSelection);
+  // Modal Dúplex continuar
+  on(elements.btnConfirmDuplex, 'click', handleConfirmDuplex);
 
-  elements.btnDetailPrev.addEventListener('click', () => {
+  // Modal Visor de Detalle (Nativo)
+  on(elements.btnClosePageDetail, 'click', () => {
+    triggerHaptic('tap');
+    if (elements.pageDetailModal) elements.pageDetailModal.classList.add('hidden');
+  });
+
+  on(elements.btnToggleDetailSelection, 'click', toggleDetailSelection);
+
+  on(elements.btnDetailPrev, 'click', () => {
     if (currentDetailPage > 1) {
       triggerHaptic('tap');
       currentDetailPage--;
@@ -460,7 +693,7 @@ function setupEventListeners() {
     }
   });
 
-  elements.btnDetailNext.addEventListener('click', () => {
+  on(elements.btnDetailNext, 'click', () => {
     if (pdfDocInstance && currentDetailPage < pdfDocInstance.numPages) {
       triggerHaptic('tap');
       currentDetailPage++;
@@ -469,35 +702,44 @@ function setupEventListeners() {
   });
 
   // Gestos táctiles de deslizamiento (swipe horizontal nativo)
-  let touchStartX = 0;
-  let touchStartY = 0;
-  elements.detailCanvasArea.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) {
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-    }
-  }, { passive: true });
+  if (elements.detailCanvasArea) {
+    let touchStartX = 0;
+    let touchStartY = 0;
+    elements.detailCanvasArea.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      }
+    }, { passive: true });
 
-  elements.detailCanvasArea.addEventListener('touchend', (e) => {
-    if (e.changedTouches.length === 1 && pdfDocInstance) {
-      const deltaX = e.changedTouches[0].clientX - touchStartX;
-      const deltaY = e.changedTouches[0].clientY - touchStartY;
-      if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
-        if (deltaX < 0 && currentDetailPage < pdfDocInstance.numPages) {
-          triggerHaptic('tap');
-          currentDetailPage++;
-          renderDetailPage(currentDetailPage);
-        } else if (deltaX > 0 && currentDetailPage > 1) {
-          triggerHaptic('tap');
-          currentDetailPage--;
-          renderDetailPage(currentDetailPage);
+    elements.detailCanvasArea.addEventListener('touchend', (e) => {
+      if (e.changedTouches.length === 1 && pdfDocInstance) {
+        const deltaX = e.changedTouches[0].clientX - touchStartX;
+        const deltaY = e.changedTouches[0].clientY - touchStartY;
+        if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
+          if (deltaX < 0 && currentDetailPage < pdfDocInstance.numPages) {
+            triggerHaptic('tap');
+            currentDetailPage++;
+            renderDetailPage(currentDetailPage);
+          } else if (deltaX > 0 && currentDetailPage > 1) {
+            triggerHaptic('tap');
+            currentDetailPage--;
+            renderDetailPage(currentDetailPage);
+          }
         }
       }
-    }
-  }, { passive: true });
+    }, { passive: true });
+  }
 
   window.addEventListener('keydown', (e) => {
-    if (!elements.pageDetailModal.classList.contains('hidden')) {
+    if (elements.confirmCancelModal && !elements.confirmCancelModal.classList.contains('hidden')) {
+      if (e.key === 'Escape') {
+        abortCancel();
+      }
+      return;
+    }
+
+    if (elements.pageDetailModal && !elements.pageDetailModal.classList.contains('hidden')) {
       if (e.key === 'Escape') {
         elements.pageDetailModal.classList.add('hidden');
       } else if (e.key === 'ArrowLeft' && currentDetailPage > 1) {
@@ -514,19 +756,242 @@ function setupEventListeners() {
     }
 
     if (e.key === 'Escape') {
-      elements.settingsModal.classList.add('hidden');
-      elements.historyDrawer.classList.add('hidden');
-      elements.pageSelectorModal.classList.add('hidden');
+      if (elements.settingsModal) elements.settingsModal.classList.add('hidden');
+      if (elements.historyDrawer) elements.historyDrawer.classList.add('hidden');
+      if (elements.pageSelectorModal) elements.pageSelectorModal.classList.add('hidden');
     }
   });
 }
 
 // -------------------------------------------------------------
+// CONTROL DE PANTALLAS DE CARGA Y PROGRESO (LOADING OVERLAYS)
+// -------------------------------------------------------------
+let uploadProgressInterval = null;
+let currentUploadPercent = 0;
+
+function showUploadProgress(fileName, fileCount = 1) {
+  if (!elements.uploadProgressModal) return;
+
+  if (elements.uploadLoadingFileName) {
+    elements.uploadLoadingFileName.textContent = fileCount > 1
+      ? `${fileCount} fotos seleccionadas`
+      : (fileName || 'Archivo');
+  }
+
+  if (elements.uploadLoadingTitle) {
+    elements.uploadLoadingTitle.textContent = fileCount > 1
+      ? 'Procesando imágenes...'
+      : 'Procesando archivo...';
+  }
+
+  currentUploadPercent = 0;
+  updateUploadProgressUI(0, 'Subiendo archivo al servidor...');
+  elements.uploadProgressModal.classList.remove('hidden');
+
+  if (uploadProgressInterval) clearInterval(uploadProgressInterval);
+
+  // Etapas secuenciales con porcentajes objetivos y velocidades fluidas
+  const stages = [
+    { target: 32, increment: 3.5, text: 'Subiendo archivo al servidor...' },
+    { target: 64, increment: 2.2, text: fileCount > 1 ? 'Convirtiendo fotos a formato A4...' : 'Analizando páginas y formato...' },
+    { target: 86, increment: 1.4, text: 'Optimizando resolución para Epson L3560...' },
+    { target: 95, increment: 0.6, text: 'Generando vista previa de alta calidad...' }
+  ];
+
+  let stageIndex = 0;
+
+  uploadProgressInterval = setInterval(() => {
+    if (stageIndex >= stages.length) {
+      // Se mantiene en 95% hasta que el backend responde
+      return;
+    }
+
+    const stage = stages[stageIndex];
+    if (currentUploadPercent < stage.target) {
+      currentUploadPercent = Math.min(stage.target, currentUploadPercent + stage.increment);
+      updateUploadProgressUI(Math.round(currentUploadPercent), stage.text);
+    } else {
+      stageIndex++;
+    }
+  }, 45);
+}
+
+function updateUploadProgressUI(percent, stageText) {
+  const p = Math.min(100, Math.max(0, percent));
+  if (elements.uploadProgressPercent) {
+    elements.uploadProgressPercent.textContent = `${p}%`;
+  }
+  if (elements.uploadProgressRingFill) {
+    // Circunferencia de r=50 es 2*PI*50 = 314.16
+    const offset = 314.16 - (314.16 * p / 100);
+    elements.uploadProgressRingFill.style.strokeDashoffset = offset;
+  }
+  if (elements.uploadLinearProgressFill) {
+    elements.uploadLinearProgressFill.style.width = `${p}%`;
+  }
+  if (stageText && elements.uploadLoadingStage) {
+    elements.uploadLoadingStage.textContent = stageText;
+  }
+}
+
+async function finishUploadProgress(successText = '¡Documento listo!') {
+  if (uploadProgressInterval) {
+    clearInterval(uploadProgressInterval);
+    uploadProgressInterval = null;
+  }
+
+  // Animación al 100%
+  updateUploadProgressUI(100, successText);
+
+  // Pausa perceptible de 320ms para confirmar visualmente el 100%
+  await new Promise(resolve => setTimeout(resolve, 320));
+
+  if (elements.uploadProgressModal) {
+    elements.uploadProgressModal.classList.add('hidden');
+  }
+}
+
+function hideUploadProgress() {
+  if (uploadProgressInterval) {
+    clearInterval(uploadProgressInterval);
+    uploadProgressInterval = null;
+  }
+  if (elements.uploadProgressModal) {
+    elements.uploadProgressModal.classList.add('hidden');
+  }
+}
+
+let printStageTimer = null;
+
+function showPrintProgress(options = {}) {
+  if (!elements.printProgressModal) return;
+
+  const {
+    title = 'Enviando a la impresora...',
+    stage = 'Conectando con Epson EcoTank L3560...',
+    isDuplex = false
+  } = options;
+
+  // Resumen del trabajo actual
+  if (elements.printJobSummaryText) {
+    if (state.currentQuote) {
+      const q = state.currentQuote;
+      const copiesStr = q.copies === 1 ? '1 copia' : `${q.copies} copias`;
+      const colorStr = q.isColor ? 'Color' : 'B&N';
+      const duplexStr = q.isDuplex ? 'Doble faz' : 'Simple';
+      const count = (state.selectedPages && state.selectedPages.length > 0)
+        ? state.selectedPages.length
+        : (state.loadedFile ? state.loadedFile.pageCount : 1);
+      const pagesStr = `${count} ${count === 1 ? 'pág' : 'págs'}`;
+      elements.printJobSummaryText.textContent = `${pagesStr} • ${copiesStr} • ${colorStr} • ${duplexStr}`;
+    } else {
+      elements.printJobSummaryText.textContent = 'Enviando trabajo a la cola de impresión...';
+    }
+  }
+
+  if (elements.printLoadingTitle) elements.printLoadingTitle.textContent = title;
+  if (elements.printLoadingStage) elements.printLoadingStage.textContent = stage;
+
+  // Restaurar estado visual normal
+  if (elements.printerAnimWrap) elements.printerAnimWrap.classList.remove('hidden');
+  if (elements.printSuccessWrap) elements.printSuccessWrap.classList.add('hidden');
+  if (elements.printShimmerBar) elements.printShimmerBar.classList.remove('hidden');
+
+  elements.printProgressModal.classList.remove('hidden');
+
+  if (printStageTimer) clearInterval(printStageTimer);
+  let step = 0;
+  const printMessages = isDuplex
+    ? [
+        'Enviando páginas pares a Epson L3560...',
+        'Spooler de Windows procesando cara trasera...',
+        'Alimentando papel desde la bandeja posterior...'
+      ]
+    : [
+        'Conectando con Epson EcoTank L3560...',
+        'Generando trabajo en cola de Windows...',
+        'Enviando datos al spooler del sistema...',
+        'Esperando respuesta de la impresora...'
+      ];
+
+  printStageTimer = setInterval(() => {
+    step++;
+    if (elements.printLoadingStage && step < printMessages.length) {
+      elements.printLoadingStage.textContent = printMessages[step];
+    }
+  }, 950);
+}
+
+async function finishPrintProgressSuccess(message = '¡Impresión enviada con éxito!') {
+  if (printStageTimer) {
+    clearInterval(printStageTimer);
+    printStageTimer = null;
+  }
+
+  if (elements.printLoadingTitle) elements.printLoadingTitle.textContent = '¡Trabajo enviado!';
+  if (elements.printLoadingStage) elements.printLoadingStage.textContent = message;
+
+  if (elements.printerAnimWrap) elements.printerAnimWrap.classList.add('hidden');
+  if (elements.printSuccessWrap) elements.printSuccessWrap.classList.remove('hidden');
+  if (elements.printShimmerBar) elements.printShimmerBar.classList.add('hidden');
+
+  // Permitir que el usuario aprecie el visto de éxito por 750ms
+  await new Promise(resolve => setTimeout(resolve, 750));
+
+  if (elements.printProgressModal) {
+    elements.printProgressModal.classList.add('hidden');
+  }
+}
+
+function hidePrintProgress() {
+  if (printStageTimer) {
+    clearInterval(printStageTimer);
+    printStageTimer = null;
+  }
+  if (elements.printProgressModal) {
+    elements.printProgressModal.classList.add('hidden');
+  }
+}
+
+// -------------------------------------------------------------
 // SUBIDA Y ANÁLISIS DE ARCHIVOS (1 O MÚLTIPLES ARCHIVOS)
 // -------------------------------------------------------------
+function isAllImages(files) {
+  const imageExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif', '.heic', '.heif', '.gif'];
+  return files.every(f => {
+    const ext = (f.name || '').substring((f.name || '').lastIndexOf('.')).toLowerCase();
+    return imageExts.includes(ext) || (f.type && f.type.startsWith('image/'));
+  });
+}
+
 async function handleFileSelect(e) {
   if (e.target.files && e.target.files.length > 0) {
-    await uploadFiles(e.target.files);
+    const files = Array.from(e.target.files);
+    state.currentPhotoFiles = isAllImages(files) ? files : [];
+    await uploadFiles(files);
+    e.target.value = '';
+  }
+}
+
+async function handleCameraSelect(e) {
+  if (e.target.files && e.target.files.length > 0) {
+    const files = Array.from(e.target.files);
+    state.currentPhotoFiles = files;
+    await uploadFiles(files);
+    e.target.value = '';
+  }
+}
+
+async function handleAddPhotosSelected(e) {
+  if (e.target.files && e.target.files.length > 0) {
+    const newFiles = Array.from(e.target.files);
+    if (!state.currentPhotoFiles || state.currentPhotoFiles.length === 0) {
+      state.currentPhotoFiles = [];
+    }
+    state.currentPhotoFiles.push(...newFiles);
+    showInlineNotice(`Agregando ${newFiles.length === 1 ? '1 foto más' : `${newFiles.length} fotos más`}... (${state.currentPhotoFiles.length} en total)`, 'info');
+    await uploadFiles(state.currentPhotoFiles);
+    e.target.value = '';
   }
 }
 
@@ -536,6 +1001,11 @@ async function uploadFiles(filesInput) {
 
   triggerHaptic('tap');
   const isMultiple = files.length > 1;
+  const initialName = isMultiple ? `${files.length} fotos` : (files[0].name || 'Documento');
+
+  // Mostrar pantalla de carga bloqueante con porcentaje animado
+  showUploadProgress(initialName, files.length);
+
   showInlineNotice(isMultiple ? `Analizando ${files.length} fotos...` : 'Analizando documento...', 'info');
   elements.priceAmount.textContent = '...';
   elements.priceDetails.textContent = 'Contando páginas...';
@@ -556,6 +1026,14 @@ async function uploadFiles(filesInput) {
 
     const data = await res.json();
     state.loadedFile = data;
+
+    // Resetear instancia para que la próxima visualización cargue el PDF fresco
+    pdfDocInstance = null;
+
+    // Si todas las entradas son imágenes, mantener la lista en memoria
+    if (isAllImages(files) || data.isImage) {
+      state.currentPhotoFiles = files;
+    }
 
     // Obtener buffer del PDF para el visor y selector
     if (data.pdfUrl) {
@@ -604,11 +1082,25 @@ async function uploadFiles(filesInput) {
     const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
     elements.fileSize.textContent = formatBytes(totalBytes);
 
-    // Habilitar selector de páginas si hay más de 1 página (PDF, Word o Múltiples Fotos)
-    if (pageCount > 1) {
-      elements.btnOpenPageSelector.classList.remove('hidden');
+    // Botón de visualización SIEMPRE visible (incluso con 1 sola hoja o 1 sola foto)
+    elements.btnOpenPageSelector.classList.remove('hidden');
+    if (pageCount === 1) {
+      if (elements.btnPageSelectorLabel) {
+        elements.btnPageSelectorLabel.textContent = data.isImage ? 'Ver foto' : 'Ver documento';
+      }
+      elements.btnOpenPageSelector.title = data.isImage ? 'Abrir y ver la foto en pantalla completa' : 'Abrir y ver la hoja en pantalla completa';
     } else {
-      elements.btnOpenPageSelector.classList.add('hidden');
+      if (elements.btnPageSelectorLabel) {
+        elements.btnPageSelectorLabel.textContent = 'Ver / Elegir páginas';
+      }
+      elements.btnOpenPageSelector.title = 'Ver miniaturas y elegir páginas';
+    }
+
+    // Botón para agregar otra foto (visible si el archivo actual es foto)
+    if (data.isImage && elements.btnAddPhoto) {
+      elements.btnAddPhoto.classList.remove('hidden');
+    } else if (elements.btnAddPhoto) {
+      elements.btnAddPhoto.classList.add('hidden');
     }
 
     if (pageCount <= 1) {
@@ -624,8 +1116,12 @@ async function uploadFiles(filesInput) {
 
     await updateQuote();
     triggerHaptic('select');
+
+    // Finalizar animación al 100% y desbloquear pantalla
+    await finishUploadProgress(data.isImage ? (isMultiple ? '¡Fotos listas!' : '¡Foto lista!') : '¡Documento listo!');
     showInlineNotice(`¡Listo! ${pageCount} ${pageCount === 1 ? 'página detectada' : 'páginas detectadas'}`, 'success');
   } catch (err) {
+    hideUploadProgress();
     console.error('Error al subir:', err);
     triggerHaptic('warning');
     showInlineNotice(err.message || 'No se pudo leer el archivo', 'error');
@@ -649,12 +1145,46 @@ function setOption(type, value) {
   }
 }
 
+function formatDisplayPrice(val) {
+  const n = Number(val);
+  if (isNaN(n) || n === 0) return '0';
+  if (Number.isInteger(n)) return n.toString();
+  return parseFloat(n.toFixed(2)).toString();
+}
+
 async function updateQuote() {
   if (!state.loadedFile) return;
 
-  const actualPages = (state.selectedPages && state.selectedPages.length > 0)
+  const actualPages = Array.isArray(state.selectedPages)
     ? state.selectedPages.length
     : (state.loadedFile.pageCount || 1);
+
+  if (actualPages === 0) {
+    state.currentQuote = {
+      pages: 0,
+      physicalSheets: 0,
+      sheetsPerCopy: 0,
+      copies: state.copies || 1,
+      isColor: state.isColor,
+      isDuplex: false,
+      totalPrice: 0,
+      breakdown: {
+        tipo: 'Ninguna página',
+        paginasPorJuego: 0,
+        hojasFisicasPorJuego: 0,
+        copias: state.copies || 1,
+        hojasFisicasTotales: 0,
+        precioPorJuego: 0,
+        total: 0
+      }
+    };
+    elements.priceAmount.textContent = '0';
+    elements.priceDetails.textContent = '0 páginas seleccionadas (marcá al menos 1 para imprimir)';
+    elements.btnApprovePrint.classList.add('is-idle');
+    return;
+  }
+
+  elements.btnApprovePrint.classList.remove('is-idle');
 
   try {
     const res = await fetch('/api/quote', {
@@ -671,7 +1201,7 @@ async function updateQuote() {
     const quote = await res.json();
     state.currentQuote = quote;
 
-    elements.priceAmount.textContent = quote.totalPrice;
+    elements.priceAmount.textContent = formatDisplayPrice(quote.totalPrice);
     elements.priceAmount.classList.remove('price-pop');
     void elements.priceAmount.offsetWidth;
     elements.priceAmount.classList.add('price-pop');
@@ -698,8 +1228,17 @@ function resetCurrentJob() {
   elements.btnOpenPageSelector.classList.add('hidden');
   elements.pageSelectorModal.classList.add('hidden');
   elements.pageDetailModal.classList.add('hidden');
+  if (elements.btnAddPhoto) elements.btnAddPhoto.classList.add('hidden');
+  if (elements.addPhotoModal) elements.addPhotoModal.classList.add('hidden');
   pdfDocInstance = null;
-  elements.fileInput.value = '';
+  state.currentPhotoFiles = [];
+  if (elements.changeFileModal) elements.changeFileModal.classList.add('hidden');
+  if (elements.docInput) elements.docInput.value = '';
+  if (elements.galleryInput) elements.galleryInput.value = '';
+  if (elements.cameraInput) elements.cameraInput.value = '';
+  if (elements.allFilesInput) elements.allFilesInput.value = '';
+  if (elements.addCameraInput) elements.addCameraInput.value = '';
+  if (elements.addGalleryInput) elements.addGalleryInput.value = '';
   elements.fileTypeBadge.className = 'file-type-pill';
   elements.fileTypeBadge.textContent = 'PDF';
 
@@ -712,6 +1251,71 @@ function resetCurrentJob() {
   elements.btnApprovePrint.classList.add('is-idle');
   elements.btnCancelJob.classList.add('is-idle');
   elements.btnDuplex.classList.remove('disabled-hint');
+
+  if (elements.confirmCancelModal) {
+    elements.confirmCancelModal.classList.add('hidden');
+  }
+}
+
+// -------------------------------------------------------------
+// CANCELACIÓN DE IMPRESIÓN CON DOBLE CONFIRMACIÓN
+// -------------------------------------------------------------
+let pendingCancelContext = null;
+
+function promptCancelConfirmation(context = 'main') {
+  pendingCancelContext = context;
+  triggerHaptic('warning');
+
+  if (elements.confirmCancelTitle && elements.confirmCancelDesc) {
+    if (context === 'duplex') {
+      elements.confirmCancelTitle.textContent = '¿Cancelar impresión doble faz?';
+      elements.confirmCancelDesc.textContent = 'Ya salieron las páginas impares. Si cancelás ahora, el trabajo quedará anulado y no se imprimirán las páginas pares restantes.';
+    } else if (context === 'printing') {
+      elements.confirmCancelTitle.textContent = '¿Detener el envío a la impresora?';
+      elements.confirmCancelDesc.textContent = 'Se interrumpirá el envío de datos al equipo Epson y se descartará el trabajo actual.';
+    } else {
+      elements.confirmCancelTitle.textContent = '¿Cancelar la impresión?';
+      elements.confirmCancelDesc.textContent = 'Se descartará el documento cargado y se cancelará la orden de impresión actual.';
+    }
+  }
+
+  if (elements.confirmCancelModal) {
+    elements.confirmCancelModal.classList.remove('hidden');
+  }
+}
+
+function abortCancel() {
+  triggerHaptic('tap');
+  if (elements.confirmCancelModal) {
+    elements.confirmCancelModal.classList.add('hidden');
+  }
+  pendingCancelContext = null;
+}
+
+async function executeCancel() {
+  triggerHaptic('warning');
+
+  if (elements.confirmCancelModal) {
+    elements.confirmCancelModal.classList.add('hidden');
+  }
+
+  // Notificar al backend si hay trabajo activo en cola
+  if (state.activeJobId) {
+    try {
+      await fetch(`/api/jobs/${state.activeJobId}/cancel`, { method: 'POST' });
+    } catch (e) {
+      console.warn('No se pudo cancelar en backend:', e);
+    }
+  }
+
+  // Ocultar modales si estaban abiertos
+  if (elements.duplexModal) elements.duplexModal.classList.add('hidden');
+  hidePrintProgress();
+
+  resetCurrentJob();
+  showInlineNotice('Impresión cancelada', 'warning');
+  await fetchRecentJobs(true);
+  pendingCancelContext = null;
 }
 
 // -------------------------------------------------------------
@@ -734,9 +1338,24 @@ async function handleApprovePrint() {
     return;
   }
 
+  if (Array.isArray(state.selectedPages) && state.selectedPages.length === 0) {
+    triggerHaptic('warning');
+    showInlineNotice('No hay ninguna página seleccionada para imprimir', 'warning');
+    return;
+  }
+
   triggerHaptic('select');
   elements.btnApprovePrint.disabled = true;
   elements.btnCancelJob.disabled = true;
+  elements.printSpinner.classList.remove('hidden');
+  elements.btnApprovePrintText.textContent = 'ENVIANDO...';
+
+  // Mostrar pantalla de carga bloqueante para el envío a la impresora
+  showPrintProgress({
+    title: 'Enviando a la impresora...',
+    stage: 'Conectando con Epson EcoTank L3560...'
+  });
+
   try {
     const actualPageCount = (state.selectedPages && state.selectedPages.length > 0)
       ? state.selectedPages.length
@@ -767,23 +1386,28 @@ async function handleApprovePrint() {
     const job = approveData.job;
 
     if (job.status === 'waiting_flip') {
+      hidePrintProgress();
       triggerHaptic('duplex');
       elements.duplexModal.classList.remove('hidden');
     } else if (job.status === 'completed') {
       triggerHaptic('success');
+      await finishPrintProgressSuccess('¡Impresión enviada a la Epson L3560!');
       showInlineNotice('¡Impresión enviada con éxito!', 'success');
       resetCurrentJob();
       await fetchRecentJobs();
     } else {
+      hidePrintProgress();
       showInlineNotice(`Estado: ${job.status}`, 'info');
       resetCurrentJob();
       await fetchRecentJobs();
     }
   } catch (err) {
+    hidePrintProgress();
     console.error('Error impresión:', err);
     triggerHaptic('warning');
     showInlineNotice(err.message || 'Error al imprimir', 'error');
   } finally {
+    hidePrintProgress();
     elements.btnApprovePrint.disabled = false;
     elements.btnCancelJob.disabled = false;
     elements.printSpinner.classList.add('hidden');
@@ -795,8 +1419,16 @@ async function handleConfirmDuplex() {
   if (!state.activeJobId) return;
 
   triggerHaptic('tap');
+  elements.duplexModal.classList.add('hidden');
   elements.btnConfirmDuplex.disabled = true;
   elements.duplexSpinner.classList.remove('hidden');
+
+  // Mostrar pantalla bloqueante mientras imprime la segunda cara
+  showPrintProgress({
+    title: 'Imprimiendo páginas pares...',
+    stage: 'Enviando segunda cara a Epson L3560...',
+    isDuplex: true
+  });
 
   try {
     const res = await fetch(`/api/jobs/${state.activeJobId}/continue-duplex`, {
@@ -805,19 +1437,22 @@ async function handleConfirmDuplex() {
     const data = await res.json();
 
     if (data.success && data.job.status === 'completed') {
-      elements.duplexModal.classList.add('hidden');
       triggerHaptic('success');
+      await finishPrintProgressSuccess('¡Doble faz finalizado con éxito!');
       showInlineNotice('¡Doble faz finalizado correctamente!', 'success');
       resetCurrentJob();
       await fetchRecentJobs();
     } else {
+      hidePrintProgress();
       showInlineNotice('Hubo un inconveniente al imprimir pares', 'error');
     }
   } catch (err) {
+    hidePrintProgress();
     console.error('Error continuar doble faz:', err);
     triggerHaptic('warning');
     showInlineNotice(err.message || 'Error de impresión', 'error');
   } finally {
+    hidePrintProgress();
     elements.btnConfirmDuplex.disabled = false;
     elements.duplexSpinner.classList.add('hidden');
   }
@@ -875,23 +1510,47 @@ async function handleSavePrices(e) {
   e.preventDefault();
   triggerHaptic('tap');
 
-  const bw_simplex = parseInt(document.getElementById('inputBwSimplex').value, 10);
-  const bw_duplex = parseInt(document.getElementById('inputBwDuplex').value, 10);
-  const color_simplex = parseInt(document.getElementById('inputColorSimplex').value, 10);
-  const color_duplex = parseInt(document.getElementById('inputColorDuplex').value, 10);
+  const inputBwSimplex = elements.inputBwSimplex || document.getElementById('inputBwSimplex');
+  const inputBwDuplex = elements.inputBwDuplex || document.getElementById('inputBwDuplex');
+  const inputColorSimplex = elements.inputColorSimplex || document.getElementById('inputColorSimplex');
+  const inputColorDuplex = elements.inputColorDuplex || document.getElementById('inputColorDuplex');
+  const selectPrinter = elements.selectPrinter || document.getElementById('selectPrinter');
+
+  const bw_simplex = parseFloat(inputBwSimplex ? inputBwSimplex.value : NaN);
+  const bw_duplex = parseFloat(inputBwDuplex ? inputBwDuplex.value : NaN);
+  const color_simplex = parseFloat(inputColorSimplex ? inputColorSimplex.value : NaN);
+  const color_duplex = parseFloat(inputColorDuplex ? inputColorDuplex.value : NaN);
+  const printerName = selectPrinter ? selectPrinter.value : undefined;
+
+  if (isNaN(bw_simplex) || bw_simplex < 0 ||
+      isNaN(bw_duplex) || bw_duplex < 0 ||
+      isNaN(color_simplex) || color_simplex < 0 ||
+      isNaN(color_duplex) || color_duplex < 0) {
+    triggerHaptic('warning');
+    showInlineNotice('Los precios deben ser números mayores o iguales a 0', 'error');
+    return;
+  }
 
   try {
+    const payload = { bw_simplex, bw_duplex, color_simplex, color_duplex };
+    if (printerName) payload.printerName = printerName;
+
     const res = await fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bw_simplex, bw_duplex, color_simplex, color_duplex })
+      body: JSON.stringify(payload)
     });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Error al guardar');
+    }
 
     const data = await res.json();
     state.config = data.config;
-    elements.settingsModal.classList.add('hidden');
+    if (elements.settingsModal) elements.settingsModal.classList.add('hidden');
     triggerHaptic('select');
-    showInlineNotice('Tarifas guardadas correctamente', 'success');
+    showInlineNotice('Configuración guardada correctamente', 'success');
 
     if (state.loadedFile) {
       await updateQuote();
@@ -899,7 +1558,7 @@ async function handleSavePrices(e) {
   } catch (err) {
     console.error('Error al guardar:', err);
     triggerHaptic('warning');
-    showInlineNotice('No se pudieron guardar las tarifas', 'error');
+    showInlineNotice(err.message || 'No se pudieron guardar las tarifas', 'error');
   }
 }
 
@@ -950,9 +1609,27 @@ function escapeHtml(str) {
 let modalTempSelectedPages = new Set();
 let pdfDocInstance = null;
 
+async function ensurePdfDoc() {
+  if (pdfDocInstance) return pdfDocInstance;
+  if (!state.pdfArrayBuffer) {
+    if (state.loadedFile && state.loadedFile.pdfUrl) {
+      const pdfRes = await fetch(state.loadedFile.pdfUrl);
+      state.pdfArrayBuffer = await pdfRes.arrayBuffer();
+    } else {
+      throw new Error('No hay buffer de archivo disponible.');
+    }
+  }
+  if (!window.pdfjsLib) {
+    throw new Error('Librería PDF.js no disponible.');
+  }
+  const loadingTask = pdfjsLib.getDocument({ data: state.pdfArrayBuffer.slice(0) });
+  pdfDocInstance = await loadingTask.promise;
+  return pdfDocInstance;
+}
+
 async function openPageSelector() {
-  if (!state.loadedFile || !state.pdfArrayBuffer) {
-    showInlineNotice('No se puede cargar el visor de este archivo', 'error');
+  if (!state.loadedFile) {
+    showInlineNotice('No hay ningún archivo cargado', 'error');
     return;
   }
 
@@ -966,7 +1643,7 @@ async function openPageSelector() {
 
   const totalPages = state.loadedFile.pageCount || 1;
   modalTempSelectedPages = new Set(
-    (state.selectedPages && state.selectedPages.length > 0)
+    Array.isArray(state.selectedPages)
       ? state.selectedPages
       : Array.from({ length: totalPages }, (_, i) => i + 1)
   );
@@ -974,14 +1651,7 @@ async function openPageSelector() {
   updateModalCounter();
 
   try {
-    if (!window.pdfjsLib) {
-      throw new Error('Librería PDF.js no disponible.');
-    }
-
-    const loadingTask = pdfjsLib.getDocument({ data: state.pdfArrayBuffer.slice(0) });
-    pdfDocInstance = await loadingTask.promise;
-    const pdf = pdfDocInstance;
-
+    const pdf = await ensurePdfDoc();
     elements.pagesGrid.innerHTML = '';
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -1042,6 +1712,27 @@ async function openPageSelector() {
       // Renderizar la miniatura en el canvas
       page.render({ canvasContext: context, viewport });
     }
+
+    // Si es imagen, añadir tarjeta al final para sumar otra foto
+    if (state.loadedFile && state.loadedFile.isImage) {
+      const addCard = document.createElement('div');
+      addCard.className = 'page-thumb-card add-more-card';
+      addCard.innerHTML = `
+        <div class="add-thumb-inner">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <strong>+ Otra foto</strong>
+          <span>Cámara o Galería</span>
+        </div>
+      `;
+      addCard.addEventListener('click', () => {
+        elements.pageSelectorModal.classList.add('hidden');
+        elements.addPhotoModal.classList.remove('hidden');
+      });
+      elements.pagesGrid.appendChild(addCard);
+    }
   } catch (err) {
     console.error('Error renderizando miniaturas:', err);
     elements.pagesGrid.innerHTML = `
@@ -1054,11 +1745,6 @@ async function openPageSelector() {
 
 function toggleModalPage(pageNum) {
   if (modalTempSelectedPages.has(pageNum)) {
-    if (modalTempSelectedPages.size <= 1) {
-      triggerHaptic('warning');
-      showInlineNotice('Tenés que dejar al menos 1 página seleccionada', 'warning');
-      return;
-    }
     modalTempSelectedPages.delete(pageNum);
   } else {
     modalTempSelectedPages.add(pageNum);
@@ -1092,7 +1778,23 @@ let currentDetailPage = 1;
 let isRenderingDetail = false;
 
 async function openPageDetail(pageNum) {
-  if (!pdfDocInstance) return;
+  try {
+    await ensurePdfDoc();
+  } catch (err) {
+    console.error(err);
+    showInlineNotice('No se puede cargar la vista previa', 'error');
+    return;
+  }
+
+  const totalPages = pdfDocInstance ? pdfDocInstance.numPages : 1;
+  if (!modalTempSelectedPages) {
+    modalTempSelectedPages = new Set(
+      Array.isArray(state.selectedPages)
+        ? state.selectedPages
+        : Array.from({ length: totalPages }, (_, i) => i + 1)
+    );
+  }
+
   currentDetailPage = pageNum;
   elements.pageDetailModal.classList.remove('hidden');
   await renderDetailPage(currentDetailPage);
@@ -1103,16 +1805,27 @@ async function renderDetailPage(pageNum) {
   isRenderingDetail = true;
 
   const totalPages = pdfDocInstance.numPages;
-  elements.pageDetailTitle.textContent = `Página ${pageNum} de ${totalPages}`;
-  elements.detailIndicator.textContent = `${pageNum} / ${totalPages}`;
+  if (totalPages <= 1) {
+    elements.pageDetailTitle.textContent = state.loadedFile?.isImage ? 'Vista previa (Foto A4)' : 'Vista previa (Hoja A4)';
+    elements.detailIndicator.textContent = '1 de 1';
+    elements.btnDetailPrev.classList.add('hidden');
+    elements.btnDetailNext.classList.add('hidden');
+    elements.btnToggleDetailSelection.classList.add('hidden');
+  } else {
+    elements.pageDetailTitle.textContent = `Página ${pageNum} de ${totalPages}`;
+    elements.detailIndicator.textContent = `${pageNum} / ${totalPages}`;
+    elements.btnDetailPrev.classList.remove('hidden');
+    elements.btnDetailNext.classList.remove('hidden');
+    elements.btnToggleDetailSelection.classList.remove('hidden');
 
-  elements.btnDetailPrev.disabled = (pageNum <= 1);
-  elements.btnDetailNext.disabled = (pageNum >= totalPages);
+    elements.btnDetailPrev.disabled = (pageNum <= 1);
+    elements.btnDetailNext.disabled = (pageNum >= totalPages);
 
-  const isSelected = modalTempSelectedPages.has(pageNum);
-  elements.btnToggleDetailSelection.className = `btn-detail-toggle ${isSelected ? 'is-included' : 'is-excluded'}`;
-  elements.detailToggleIcon.textContent = isSelected ? '✓' : '✕';
-  elements.detailToggleText.textContent = isSelected ? 'Incluida' : 'Excluida';
+    const isSelected = modalTempSelectedPages.has(pageNum);
+    elements.btnToggleDetailSelection.className = `btn-detail-toggle ${isSelected ? 'is-included' : 'is-excluded'}`;
+    elements.detailToggleIcon.textContent = isSelected ? '✓' : '✕';
+    elements.detailToggleText.textContent = isSelected ? 'Incluida' : 'Excluida';
+  }
 
   elements.detailLoading.classList.remove('hidden');
 
@@ -1159,7 +1872,6 @@ function toggleAllModalPages(selectAll) {
     for (let i = 1; i <= total; i++) modalTempSelectedPages.add(i);
   } else {
     modalTempSelectedPages.clear();
-    modalTempSelectedPages.add(1);
   }
 
   for (let i = 1; i <= total; i++) {
@@ -1179,7 +1891,11 @@ function toggleAllModalPages(selectAll) {
 
 function updateModalCounter() {
   const count = modalTempSelectedPages.size;
-  elements.selectedPagesCountBadge.textContent = `${count} ${count === 1 ? 'pág' : 'págs'} elegidas`;
+  if (count === 0) {
+    elements.selectedPagesCountBadge.textContent = '0 págs (ninguna)';
+  } else {
+    elements.selectedPagesCountBadge.textContent = `${count} ${count === 1 ? 'pág' : 'págs'} elegidas`;
+  }
   elements.btnApplyCount.textContent = count;
 }
 
@@ -1191,7 +1907,10 @@ function applyPageSelection() {
   const totalOriginal = state.loadedFile.pageCount || 1;
   const selectedCount = state.selectedPages.length;
 
-  if (selectedCount < totalOriginal) {
+  if (selectedCount === 0) {
+    elements.filePages.textContent = `0 de ${totalOriginal} págs (ninguna)`;
+    showInlineNotice('No marcaste ninguna página. El total a pagar es $0', 'info');
+  } else if (selectedCount < totalOriginal) {
     elements.filePages.textContent = `${selectedCount} de ${totalOriginal} págs`;
     showInlineNotice(`Seleccionadas ${selectedCount} de ${totalOriginal} páginas`, 'success');
   } else {

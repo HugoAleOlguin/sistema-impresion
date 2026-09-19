@@ -10,8 +10,29 @@ const { loadConfig } = require('../config');
  */
 function calculateQuote(totalPages, isColor = false, isDuplex = false, copies = 1) {
   const config = loadConfig();
-  const pages = Math.max(1, parseInt(totalPages, 10) || 1);
+  const pages = Math.max(0, parseInt(totalPages, 10) || 0);
   const numCopies = Math.max(1, parseInt(copies, 10) || 1);
+
+  if (pages === 0) {
+    return {
+      pages: 0,
+      physicalSheets: 0,
+      sheetsPerCopy: 0,
+      copies: numCopies,
+      isColor,
+      isDuplex,
+      totalPrice: 0,
+      breakdown: {
+        tipo: 'Ninguna página',
+        paginasPorJuego: 0,
+        hojasFisicasPorJuego: 0,
+        copias: numCopies,
+        hojasFisicasTotales: 0,
+        precioPorJuego: 0,
+        total: 0
+      }
+    };
+  }
 
   let physicalSheetsPerCopy = 0;
   let unitPricePerCopy = 0;
@@ -21,8 +42,8 @@ function calculateQuote(totalPages, isColor = false, isDuplex = false, copies = 
     // Modo Simple Faz
     physicalSheetsPerCopy = pages;
     const unitRate = isColor ? config.color_simplex : config.bw_simplex;
-    unitPricePerCopy = physicalSheetsPerCopy * unitRate;
-    const totalPrice = unitPricePerCopy * numCopies;
+    unitPricePerCopy = Math.round((physicalSheetsPerCopy * unitRate + Number.EPSILON) * 100) / 100;
+    const totalPrice = Math.round((unitPricePerCopy * numCopies + Number.EPSILON) * 100) / 100;
     const totalPhysicalSheets = physicalSheetsPerCopy * numCopies;
 
     breakdown = {
@@ -57,9 +78,9 @@ function calculateQuote(totalPages, isColor = false, isDuplex = false, copies = 
 
     const duplexSubtotal = duplexSheets * duplexUnitPrice;
     const remainderSubtotal = remainderSheets * simplexUnitPrice;
-    unitPricePerCopy = duplexSubtotal + remainderSubtotal;
+    unitPricePerCopy = Math.round((duplexSubtotal + remainderSubtotal + Number.EPSILON) * 100) / 100;
 
-    const totalPrice = unitPricePerCopy * numCopies;
+    const totalPrice = Math.round((unitPricePerCopy * numCopies + Number.EPSILON) * 100) / 100;
     const totalPhysicalSheets = physicalSheetsPerCopy * numCopies;
 
     breakdown = {
