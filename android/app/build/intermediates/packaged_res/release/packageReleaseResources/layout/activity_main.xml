@@ -18,40 +18,84 @@
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
-    <!-- Overlay de carga y reconexión -->
+    <!-- Overlay de carga y reconexión estilizado, fluido y psicológicamente rápido -->
     <LinearLayout
         android:id="@+id/loadingLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center"
         android:orientation="vertical"
+        android:background="@color/backgroundColor"
         android:padding="32dp">
 
+        <!-- Contenedor del Logo de la App -->
+        <FrameLayout
+            android:id="@+id/logoContainer"
+            android:layout_width="96dp"
+            android:layout_height="96dp">
+
+            <ImageView
+                android:id="@+id/appLogo"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/app_name"
+                android:scaleType="fitCenter"
+                android:src="@mipmap/ic_launcher" />
+        </FrameLayout>
+
+        <!-- Título de Marca -->
+        <TextView
+            android:id="@+id/brandTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="El Tato"
+            android:textColor="#F8FAFC"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.02" />
+
+        <TextView
+            android:id="@+id/brandTagline"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="Impresiones al instante"
+            android:textColor="#38BDF8"
+            android:textSize="12sp"
+            android:letterSpacing="0.05"
+            android:textStyle="bold" />
+
+        <!-- Barra de progreso moderna horizontal -->
         <ProgressBar
             android:id="@+id/progressBar"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="160dp"
+            android:layout_height="4dp"
+            android:layout_marginTop="26dp"
             android:indeterminate="true"
-            android:indeterminateTint="@color/colorAccent" />
+            android:indeterminateTint="#38BDF8" />
 
+        <!-- Estado de conexión sutil -->
         <TextView
             android:id="@+id/statusText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="14dp"
             android:gravity="center"
-            android:text="@string/connecting"
-            android:textColor="@color/textPrimary"
-            android:textSize="16sp" />
+            android:text="Iniciando..."
+            android:textColor="#94A3B8"
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/subStatusText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="4dp"
             android:gravity="center"
-            android:textColor="@color/textSecondary"
-            android:textSize="13sp" />
+            android:text="Conectando al mostrador"
+            android:textColor="#64748B"
+            android:textSize="11sp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/retryButton"
@@ -61,7 +105,7 @@
             android:text="@string/retry"
             android:visibility="gone"
             app:backgroundTint="@color/colorPrimary"
-            app:cornerRadius="8dp" />
+            app:cornerRadius="10dp" />
 
     </LinearLayout>
 

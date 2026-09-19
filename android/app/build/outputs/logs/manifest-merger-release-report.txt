@@ -1,20 +1,20 @@
 -- Merging decision tree log ---
 provider#androidx.core.content.FileProvider
-INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:34:9-42:20
+INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:35:9-43:20
 	android:grantUriPermissions
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:38:13-47
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:39:13-47
 	android:authorities
 		INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:36:13-64
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:37:13-64
 	android:exported
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:37:13-37
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:38:13-37
 	android:name
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:35:13-62
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:36:13-62
 manifest
-ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:2:1-46:12
-INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:2:1-46:12
-INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:2:1-46:12
-INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:2:1-46:12
+ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:2:1-47:12
+INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:2:1-47:12
+INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:2:1-47:12
+INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:2:1-47:12
 MERGED from [com.google.android.material:material:1.12.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\2337ff1699ed8438700de3f7352ce6a8\transformed\material-1.12.0\AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.appcompat:appcompat-resources:1.7.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\bf4bf41930e33e7e4590d4c9d18188a5\transformed\jetified-appcompat-resources-1.7.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\5eef1f9fad2a134126f61707bce25b2b\transformed\constraintlayout-2.0.1\AndroidManifest.xml:2:1-11:12
@@ -104,8 +104,8 @@ ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\
 	android:name
 		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:12:19-67
 application
-ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:14:5-44:19
-INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:14:5-44:19
+ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:14:5-45:19
+INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:14:5-45:19
 MERGED from [com.google.android.material:material:1.12.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\2337ff1699ed8438700de3f7352ce6a8\transformed\material-1.12.0\AndroidManifest.xml:22:5-20
 MERGED from [com.google.android.material:material:1.12.0] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\2337ff1699ed8438700de3f7352ce6a8\transformed\material-1.12.0\AndroidManifest.xml:22:5-20
 MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] C:\Users\HuGOD777\.gradle\caches\8.14.3\transforms\5eef1f9fad2a134126f61707bce25b2b\transformed\constraintlayout-2.0.1\AndroidManifest.xml:9:5-20
@@ -138,34 +138,36 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\HuGOD777\.gradle\c
 		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:15:9-35
 	android:theme
 		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:20:9-44
+	android:networkSecurityConfig
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:22:9-69
 	android:usesCleartextTraffic
 		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:21:9-44
 activity#com.eltato.impresion.MainActivity
-ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:23:9-32:20
+ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:24:9-33:20
 	android:windowSoftInputMode
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:27:13-55
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:28:13-55
 	android:exported
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:25:13-36
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:26:13-36
 	android:configChanges
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:26:13-74
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:27:13-74
 	android:name
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:24:13-41
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:25:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:28:13-31:29
+ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:29:13-32:29
 action#android.intent.action.MAIN
-ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:29:17-69
+ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:30:17-69
 	android:name
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:29:25-66
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:30:25-66
 category#android.intent.category.LAUNCHER
-ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:30:17-77
+ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:31:17-77
 	android:name
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:30:27-74
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:31:27-74
 meta-data#android.support.FILE_PROVIDER_PATHS
-ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:39:13-41:54
+ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:40:13-42:54
 	android:resource
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:41:17-51
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:42:17-51
 	android:name
-		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:40:17-67
+		ADDED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml:41:17-67
 uses-sdk
 INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from C:\Users\HuGOD777\proyectos practica\eltato imprimir\android\app\src\main\AndroidManifest.xml

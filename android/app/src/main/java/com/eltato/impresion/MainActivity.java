@@ -120,8 +120,8 @@ public class MainActivity extends AppCompatActivity {
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Handler retryHandler = new Handler(Looper.getMainLooper());
     private Runnable retryRunnable;
-    private int retryCountdownSeconds = 3;
-    private boolean isReconnecting = false;
+    private long connectionSessionStartTime = 0L;
+    private static final long MAX_SILENT_DISCOVERY_MS = 12000L;
 
     // ── Launcher 1: Documentos (ACTION_OPEN_DOCUMENT) ──────────────────────────
     private final ActivityResultLauncher<Intent> documentLauncher = registerForActivityResult(
@@ -227,6 +227,7 @@ public class MainActivity extends AppCompatActivity {
 
         retryButton.setOnClickListener(v -> {
             cancelPendingRetry();
+            connectionSessionStartTime = System.currentTimeMillis();
             startConnectionFlow(true);
         });
 
@@ -487,25 +488,27 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                if (!isReconnecting) {
-                    isConnectionActive = true;
-                    isResolvingConnection = false;
+                isConnectionActive = true;
+                isResolvingConnection = false;
+                connectionSessionStartTime = 0L;
 
-                    // Actualizar timestamp de última sesión activa
+                if (url != null && !url.equals("about:blank") && !url.startsWith("data:")) {
+                    String origin = extractOrigin(url);
                     getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                             .edit()
+                            .putString(KEY_CACHED_URL, origin)
                             .putLong(KEY_CACHED_TIME, System.currentTimeMillis())
                             .apply();
-
-                    loadingLayout.animate()
-                            .alpha(0f)
-                            .setDuration(220)
-                            .withEndAction(() -> {
-                                loadingLayout.setVisibility(View.GONE);
-                                loadingLayout.setAlpha(1f);
-                                webView.setVisibility(View.VISIBLE);
-                            });
                 }
+
+                loadingLayout.animate()
+                        .alpha(0f)
+                        .setDuration(220)
+                        .withEndAction(() -> {
+                            loadingLayout.setVisibility(View.GONE);
+                            loadingLayout.setAlpha(1f);
+                            webView.setVisibility(View.VISIBLE);
+                        });
             }
 
             @Override
@@ -531,11 +534,9 @@ public class MainActivity extends AppCompatActivity {
                                 .apply();
                     }
 
-                    if (desc.contains("ERR_NAME_NOT_RESOLVED")) {
-                        startAutoReconnect("Túnel no disponible o reconectando...");
-                    } else {
-                        startAutoReconnect("Error de conexión (" + desc + ")");
-                    }
+                    // Conexión silenciosa y rápida al túnel nuevo o IP local
+                    connectionSessionStartTime = System.currentTimeMillis();
+                    startConnectionFlow(true);
                 }
             }
 
@@ -550,7 +551,9 @@ public class MainActivity extends AppCompatActivity {
                                 .edit()
                                 .remove(KEY_CACHED_URL)
                                 .apply();
-                        startAutoReconnect("El túnel se está reiniciando (código " + statusCode + ")");
+
+                        connectionSessionStartTime = System.currentTimeMillis();
+                        startConnectionFlow(true);
                     }
                 }
             }
@@ -656,6 +659,32 @@ public class MainActivity extends AppCompatActivity {
                 });
     }
 
+    // ── Normalización de URL al origen (scheme://host:port) ─────────────────────
+    private String extractOrigin(String urlStr) {
+        if (urlStr == null || urlStr.trim().isEmpty()) return "";
+        try {
+            Uri uri = Uri.parse(urlStr.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            int port = uri.getPort();
+            if (scheme != null && host != null) {
+                if ((scheme.equalsIgnoreCase("http") && (port == -1 || port == 80)) ||
+                    (scheme.equalsIgnoreCase("https") && (port == -1 || port == 443))) {
+                    return scheme + "://" + host;
+                }
+                return scheme + "://" + host + (port > 0 ? ":" + port : "");
+            }
+        } catch (Exception ignored) {}
+
+        String clean = urlStr.trim();
+        int qIndex = clean.indexOf('?');
+        if (qIndex != -1) clean = clean.substring(0, qIndex);
+        int hIndex = clean.indexOf('#');
+        if (hIndex != -1) clean = clean.substring(0, hIndex);
+        while (clean.endsWith("/")) clean = clean.substring(0, clean.length() - 1);
+        return clean;
+    }
+
     // ── Resolución de conexión ultra-rápida y persistencia de sesión ─────────────
     private static class RemoteTunnelInfo {
         String url;
@@ -673,6 +702,10 @@ public class MainActivity extends AppCompatActivity {
         isResolvingConnection = true;
         connectionResolved.set(false);
 
+        if (connectionSessionStartTime == 0L) {
+            connectionSessionStartTime = System.currentTimeMillis();
+        }
+
         runOnUiThread(() -> {
             webView.setVisibility(View.GONE);
             loadingLayout.setAlpha(1f);
@@ -685,18 +718,19 @@ public class MainActivity extends AppCompatActivity {
         });
 
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        String cachedUrl = prefs.getString(KEY_CACHED_URL, null);
+        String rawCachedUrl = prefs.getString(KEY_CACHED_URL, null);
+        String cachedUrl = extractOrigin(rawCachedUrl);
         long cachedTime = prefs.getLong(KEY_CACHED_TIME, 0L);
         boolean isSessionFresh = (System.currentTimeMillis() - cachedTime) < MAX_SESSION_VALIDITY_MS;
 
         List<Runnable> tasks = new ArrayList<>();
 
         // 1. TAREA PRIORITARIA: Sesión previa guardada
-        if (!forceFresh && cachedUrl != null && !cachedUrl.trim().isEmpty() && isSessionFresh) {
-            final String fastUrl = cachedUrl.trim();
+        if (!forceFresh && cachedUrl != null && !cachedUrl.isEmpty() && isSessionFresh) {
+            final String fastUrl = cachedUrl;
             tasks.add(() -> {
                 if (resolutionCounter.get() != resId || connectionResolved.get()) return;
-                int timeout = fastUrl.startsWith("http://192.168.") ? 1200 : 3500;
+                int timeout = fastUrl.startsWith("http://192.168.") ? 1000 : 2500;
                 if (pingCandidate(fastUrl, timeout)) {
                     onCandidateWon(fastUrl, "Sesión restaurada al instante", resId);
                 }
@@ -705,7 +739,6 @@ public class MainActivity extends AppCompatActivity {
 
         // 2. CANDIDATOS LAN (Red Local Wi-Fi de alta velocidad)
         Set<String> lanCandidates = new LinkedHashSet<>();
-        // Priorizar IP predeterminada de la PC y en caché
         if (defaultLanIp != null && !defaultLanIp.trim().isEmpty()) {
             lanCandidates.add(defaultLanIp.trim());
         }
@@ -732,7 +765,7 @@ public class MainActivity extends AppCompatActivity {
 
             tasks.add(() -> {
                 if (resolutionCounter.get() != resId || connectionResolved.get()) return;
-                if (pingCandidate(lanUrl, 1500)) {
+                if (pingCandidate(lanUrl, 1200)) {
                     onCandidateWon(lanUrl, "Conectado por Wi-Fi Local (Alta Velocidad)", resId);
                 }
             });
@@ -746,7 +779,7 @@ public class MainActivity extends AppCompatActivity {
                 // Probar IP LAN de la PC reportada por el túnel
                 if (info.lanIp != null && !info.lanIp.isEmpty() && !lanCandidates.contains(info.lanIp)) {
                     String gistLan = "http://" + info.lanIp + ":" + localPort;
-                    if (!connectionResolved.get() && pingCandidate(gistLan, 1500)) {
+                    if (!connectionResolved.get() && pingCandidate(gistLan, 1200)) {
                         onCandidateWon(gistLan, "Conectado por Wi-Fi Local (Detectado por nube)", resId);
                         return;
                     }
@@ -754,8 +787,9 @@ public class MainActivity extends AppCompatActivity {
 
                 // Probar el túnel Cloudflare
                 if (info.url != null && info.url.startsWith("https://") && !connectionResolved.get()) {
-                    if (pingCandidate(info.url, 4000)) {
-                        onCandidateWon(info.url, "Conectado mediante Túnel Remoto", resId);
+                    String cleanTunnel = extractOrigin(info.url);
+                    if (pingCandidate(cleanTunnel, 3500)) {
+                        onCandidateWon(cleanTunnel, "Conectado mediante Túnel Remoto", resId);
                     }
                 }
             }
@@ -779,15 +813,15 @@ public class MainActivity extends AppCompatActivity {
     private void onCandidateWon(String targetUrl, String connectionType, int resId) {
         if (resolutionCounter.get() != resId) return;
         if (connectionResolved.compareAndSet(false, true)) {
-            // Guardar para arranque directo e instantáneo en la próxima sesión
+            String origin = extractOrigin(targetUrl);
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             prefs.edit()
-                    .putString(KEY_CACHED_URL, targetUrl)
+                    .putString(KEY_CACHED_URL, origin)
                     .putLong(KEY_CACHED_TIME, System.currentTimeMillis())
                     .apply();
 
             try {
-                Uri uri = Uri.parse(targetUrl);
+                Uri uri = Uri.parse(origin);
                 if (uri.getHost() != null && (uri.getHost().startsWith("192.168.") || uri.getHost().startsWith("10."))) {
                     prefs.edit().putString(KEY_CACHED_IP, uri.getHost()).apply();
                 }
@@ -795,7 +829,7 @@ public class MainActivity extends AppCompatActivity {
 
             runOnUiThread(() -> {
                 if (resolutionCounter.get() == resId) {
-                    loadUrlInApp(targetUrl, connectionType);
+                    loadUrlInApp(origin, connectionType);
                 }
             });
         }
@@ -807,8 +841,19 @@ public class MainActivity extends AppCompatActivity {
             if (resolutionCounter.get() == resId && !connectionResolved.get()) {
                 runOnUiThread(() -> {
                     if (resolutionCounter.get() == resId && !connectionResolved.get()) {
-                        isResolvingConnection = false;
-                        startAutoReconnect("No se pudo conectar al Kiosco");
+                        long elapsed = System.currentTimeMillis() - connectionSessionStartTime;
+                        if (elapsed < MAX_SILENT_DISCOVERY_MS) {
+                            // Reintento silencioso en segundo plano sin molestar al usuario ni mostrar avisos
+                            retryRunnable = () -> {
+                                if (resolutionCounter.get() == resId && !connectionResolved.get()) {
+                                    startConnectionFlow(true);
+                                }
+                            };
+                            retryHandler.postDelayed(retryRunnable, 700);
+                        } else {
+                            // Más de 12 segundos sin respuesta: mostrar estado offline amigable
+                            showOfflineState();
+                        }
                     }
                 });
             }
@@ -819,9 +864,9 @@ public class MainActivity extends AppCompatActivity {
         if (baseUrl == null || baseUrl.trim().isEmpty()) return false;
         HttpURLConnection conn = null;
         try {
-            String cleanUrl = baseUrl.trim();
-            if (cleanUrl.endsWith("/")) cleanUrl = cleanUrl.substring(0, cleanUrl.length() - 1);
-            String target = cleanUrl + "/api/config?token=" + kioscoSecret;
+            String origin = extractOrigin(baseUrl);
+            if (origin == null || origin.isEmpty()) return false;
+            String target = origin + "/api/config?token=" + kioscoSecret;
 
             URL url = new URL(target);
             conn = (HttpURLConnection) url.openConnection();
@@ -882,16 +927,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private synchronized RemoteTunnelInfo fetchRemoteTunnelInfo(boolean forceFresh) {
-        // Si tenemos info en caché reciente (<2 min) y no forzamos refresco, reusar
         if (!forceFresh && cachedTunnelInfo != null && (System.currentTimeMillis() - lastTunnelFetchTime) < 120000L) {
             return cachedTunnelInfo;
         }
 
-        // 1. Intentar vía Raw Gist URL (rápido, sin límites de API REST y sin credenciales)
-        RemoteTunnelInfo info = fetchGistViaRaw();
+        // 1. Prioridad: API REST de GitHub en tiempo real (evita los 5 min de caché de Fastly CDN en Gist raw)
+        RemoteTunnelInfo info = fetchGistViaApi();
         if (info == null || info.url == null || info.url.isEmpty()) {
-            // 2. Si falla Raw, intentar vía API REST de GitHub
-            info = fetchGistViaApi();
+            // 2. Fallback: Raw Gist URL
+            info = fetchGistViaRaw();
         }
 
         if (info != null && info.url != null && !info.url.isEmpty()) {
@@ -899,11 +943,11 @@ public class MainActivity extends AppCompatActivity {
             lastTunnelFetchTime = System.currentTimeMillis();
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                     .edit()
-                    .putString("cached_raw_tunnel_url", info.url)
+                    .putString("cached_raw_tunnel_url", extractOrigin(info.url))
                     .putString("cached_raw_tunnel_lan", info.lanIp)
                     .apply();
         } else {
-            // Si la red falló, usar el último túnel conocido en SharedPreferences como fallback
+            // 3. Fallback: último túnel guardado en preferencias
             String savedUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString("cached_raw_tunnel_url", null);
             if (savedUrl != null && !savedUrl.isEmpty()) {
                 info = new RemoteTunnelInfo();
@@ -948,9 +992,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             conn.disconnect();
-        } catch (Exception e) {
-            // Se silencia y pasa al fallback
-        }
+        } catch (Exception ignored) {}
         return null;
     }
 
@@ -977,9 +1019,7 @@ public class MainActivity extends AppCompatActivity {
                 return parseTunnelJson(sb.toString());
             }
             conn.disconnect();
-        } catch (Exception e) {
-            // Silenciar
-        }
+        } catch (Exception ignored) {}
         return null;
     }
 
@@ -998,55 +1038,37 @@ public class MainActivity extends AppCompatActivity {
 
     private void loadUrlInApp(String targetUrl, String connectionType) {
         cancelPendingRetry();
-        isReconnecting = false;
-        currentActiveUrl = targetUrl;
+        String origin = extractOrigin(targetUrl);
+        currentActiveUrl = origin;
         subStatusText.setText(connectionType);
 
         CookieManager cookieManager = CookieManager.getInstance();
-        cookieManager.setCookie(targetUrl, "kiosco_auth=" + kioscoSecret + "; Path=/; SameSite=Lax");
+        cookieManager.setCookie(origin, "kiosco_auth=" + kioscoSecret + "; Path=/; SameSite=Lax");
         cookieManager.flush();
 
-        String finalUrl = targetUrl;
+        String finalUrl = origin;
         if (!finalUrl.contains("token=")) {
-            finalUrl = finalUrl + (finalUrl.contains("?") ? "&" : "/?") + "token=" + kioscoSecret;
+            finalUrl = finalUrl + "/?token=" + kioscoSecret;
         }
         webView.loadUrl(finalUrl);
     }
 
-    // ── Reconexión Automática Inteligente con Cuenta Regresiva ─────────────────
-    private void startAutoReconnect(String reason) {
+    // ── Estado fuera de línea sutil (sólo tras 12s de búsqueda silenciosa) ──────
+    private void showOfflineState() {
         if (isFinishing() || isDestroyed()) return;
 
         runOnUiThread(() -> {
-            isReconnecting = true;
+            isResolvingConnection = false;
             cancelPendingRetry();
 
             webView.setVisibility(View.GONE);
             loadingLayout.setVisibility(View.VISIBLE);
-            progressBar.setVisibility(View.VISIBLE);
+            progressBar.setVisibility(View.GONE);
             retryButton.setVisibility(View.VISIBLE);
-            retryButton.setText("Reintentar ahora");
-            statusText.setText("Reconectando con el Kiosco...");
-
-            retryCountdownSeconds = 3;
-            updateRetryUi(reason);
+            retryButton.setText("Reintentar conexión");
+            statusText.setText("Sin conexión con el mostrador");
+            subStatusText.setText("Verificá que la PC esté encendida o que el teléfono tenga internet.");
         });
-    }
-
-    private void updateRetryUi(String reason) {
-        if (!isReconnecting || isFinishing() || isDestroyed()) return;
-
-        if (retryCountdownSeconds > 0) {
-            subStatusText.setText(reason + "\nReintento automático en " + retryCountdownSeconds + " s...");
-            retryRunnable = () -> {
-                retryCountdownSeconds--;
-                updateRetryUi(reason);
-            };
-            retryHandler.postDelayed(retryRunnable, 1000);
-        } else {
-            subStatusText.setText("Buscando conexión...");
-            startConnectionFlow(true);
-        }
     }
 
     private void cancelPendingRetry() {
@@ -1066,7 +1088,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         // Si la conexión ya está activa y el WebView visible, NO recargar nada (mantiene la sesión sin parpadeos)
-        if (isConnectionActive && webView != null && webView.getVisibility() == View.VISIBLE && !isReconnecting) {
+        if (isConnectionActive && webView != null && webView.getVisibility() == View.VISIBLE) {
             return;
         }
         // Sólo iniciar resolución si no hay sesión activa ni resolución en marcha

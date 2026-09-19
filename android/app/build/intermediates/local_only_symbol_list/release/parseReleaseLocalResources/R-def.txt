@@ -8,7 +8,11 @@ color colorPrimaryDark
 color ic_launcher_background
 color textPrimary
 color textSecondary
+id appLogo
+id brandTagline
+id brandTitle
 id loadingLayout
+id logoContainer
 id progressBar
 id retryButton
 id statusText
@@ -23,5 +27,11 @@ string app_name
 string connecting
 string offline_msg
 string retry
+style BottomSheetShapeDark
+style BottomSheetShapeLight
+style BottomSheetStyleDark
+style BottomSheetStyleLight
+style RoundedBottomSheet
 style Theme.ElTato
 xml file_paths
+xml network_security_config
