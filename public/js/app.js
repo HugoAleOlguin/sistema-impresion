@@ -929,6 +929,57 @@ async function handleAddPhotosSelected(e) {
   }
 }
 
+async function compressImageIfNeeded(file) {
+  if (!file || !file.type || !file.type.startsWith('image/')) return file;
+  if (file.size < 500 * 1024 && !file.type.includes('heic')) return file;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxDim = 1920;
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob && blob.size < file.size) {
+            const cleanName = (file.name || 'foto').replace(/\.[^.]+$/, '.jpg');
+            const compressedFile = new File([blob], cleanName, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            resolve(compressedFile);
+          } else {
+            resolve(file);
+          }
+        },
+        'image/jpeg',
+        0.85
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+
 async function uploadFiles(filesInput) {
   const files = Array.from(filesInput);
   if (files.length === 0) return;
@@ -940,12 +991,23 @@ async function uploadFiles(filesInput) {
   // Mostrar pantalla de carga bloqueante con porcentaje animado
   showUploadProgress(initialName, files.length);
 
-  showInlineNotice(isMultiple ? `Analizando ${files.length} fotos...` : 'Analizando documento...', 'info');
+  showInlineNotice(isMultiple ? `Preparando ${files.length} fotos...` : 'Analizando documento...', 'info');
   elements.priceAmount.textContent = '...';
   elements.priceDetails.textContent = 'Contando páginas...';
 
+  // Optimizar fotos en el cliente para subidas livianas y veloces por túnel
+  const preparedFiles = [];
+  for (const f of files) {
+    if (f.type && f.type.startsWith('image/')) {
+      const optimized = await compressImageIfNeeded(f);
+      preparedFiles.push(optimized);
+    } else {
+      preparedFiles.push(f);
+    }
+  }
+
   const formData = new FormData();
-  files.forEach(f => formData.append('documento', f));
+  preparedFiles.forEach(f => formData.append('documento', f));
 
   try {
     const res = await fetch('/api/upload', {
@@ -1164,10 +1226,12 @@ function resetCurrentJob() {
   elements.pageSelectorModal.classList.add('hidden');
   elements.pageDetailModal.classList.add('hidden');
   if (elements.btnAddPhoto) elements.btnAddPhoto.classList.add('hidden');
-  if (elements.addPhotoModal) elements.addPhotoModal.classList.add('hidden');
+  if (elements.pagesGrid) {
+    elements.pagesGrid.dataset.cachedFileId = '';
+    elements.pagesGrid.innerHTML = '';
+  }
   pdfDocInstance = null;
   state.currentPhotoFiles = [];
-  if (elements.changeFileModal) elements.changeFileModal.classList.add('hidden');
   if (elements.docInput) elements.docInput.value = '';
   if (elements.galleryInput) elements.galleryInput.value = '';
   if (elements.cameraInput) elements.cameraInput.value = '';
@@ -1569,14 +1633,6 @@ async function openPageSelector() {
     return;
   }
 
-  elements.pageSelectorModal.classList.remove('hidden');
-  elements.pagesGrid.innerHTML = `
-    <div class="loading-pages">
-      <span class="spinner" style="border-top-color: var(--color-blue); border-color: #cbd5e1;"></span>
-      <p>Generando vista previa de las hojas...</p>
-    </div>
-  `;
-
   const totalPages = state.loadedFile.pageCount || 1;
   modalTempSelectedPages = new Set(
     Array.isArray(state.selectedPages)
@@ -1585,6 +1641,31 @@ async function openPageSelector() {
   );
 
   updateModalCounter();
+
+  // Si ya están cacheadas las miniaturas para este mismo archivo, abrir instantáneamente sin re-renderizar
+  const currentFileId = state.loadedFile.fileId || state.loadedFile.pdfPath || '';
+  if (currentFileId && elements.pagesGrid.dataset.cachedFileId === currentFileId) {
+    for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+      const card = document.getElementById(`thumb-page-${pageNum}`);
+      if (card) {
+        card.classList.toggle('is-excluded', !modalTempSelectedPages.has(pageNum));
+        const statusPill = card.querySelector('.page-status-pill');
+        if (statusPill) {
+          statusPill.textContent = modalTempSelectedPages.has(pageNum) ? '✓ Lista' : '✕ Excluida';
+        }
+      }
+    }
+    elements.pageSelectorModal.classList.remove('hidden');
+    return;
+  }
+
+  elements.pageSelectorModal.classList.remove('hidden');
+  elements.pagesGrid.innerHTML = `
+    <div class="loading-pages">
+      <span class="spinner" style="border-top-color: var(--color-blue); border-color: #cbd5e1;"></span>
+      <p>Generando vista previa de las hojas...</p>
+    </div>
+  `;
 
   try {
     const pdf = await ensurePdfDoc();
@@ -1670,6 +1751,8 @@ async function openPageSelector() {
       });
       elements.pagesGrid.appendChild(addCard);
     }
+
+    elements.pagesGrid.dataset.cachedFileId = currentFileId;
   } catch (err) {
     console.error('Error renderizando miniaturas:', err);
     elements.pagesGrid.innerHTML = `

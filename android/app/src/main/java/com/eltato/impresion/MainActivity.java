@@ -28,6 +28,9 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.os.Handler;
+import android.os.Looper;
+import android.webkit.WebResourceResponse;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -89,6 +92,10 @@ public class MainActivity extends AppCompatActivity {
     private int currentPickerMode = MODE_NONE;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Handler retryHandler = new Handler(Looper.getMainLooper());
+    private Runnable retryRunnable;
+    private int retryCountdownSeconds = 5;
+    private boolean isReconnecting = false;
 
     // ── Launcher 1: Documentos (ACTION_OPEN_DOCUMENT) ──────────────────────────
     private final ActivityResultLauncher<Intent> documentLauncher = registerForActivityResult(
@@ -192,7 +199,10 @@ public class MainActivity extends AppCompatActivity {
         loadAppConfig();
         setupWebView();
 
-        retryButton.setOnClickListener(v -> resolveAndConnect());
+        retryButton.setOnClickListener(v -> {
+            cancelPendingRetry();
+            resolveAndConnect();
+        });
 
         resolveAndConnect();
     }
@@ -423,14 +433,26 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                loadingLayout.setVisibility(View.GONE);
-                webView.setVisibility(View.VISIBLE);
+                if (!isReconnecting) {
+                    loadingLayout.setVisibility(View.GONE);
+                    webView.setVisibility(View.VISIBLE);
+                }
             }
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) {
-                    showErrorState("Error al cargar la página (" + error.getDescription() + ")");
+                if (request != null && request.isForMainFrame()) {
+                    startAutoReconnect("Error de conexión (" + error.getDescription() + ")");
+                }
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
+                if (request != null && request.isForMainFrame()) {
+                    int statusCode = errorResponse != null ? errorResponse.getStatusCode() : 0;
+                    if (statusCode >= 500 || statusCode == 404) {
+                        startAutoReconnect("El túnel se está reiniciando (código " + statusCode + ")");
+                    }
                 }
             }
 
@@ -509,6 +531,7 @@ public class MainActivity extends AppCompatActivity {
     // ── Resolución de conexión ─────────────────────────────────────────────────
     private void resolveAndConnect() {
         runOnUiThread(() -> {
+            cancelPendingRetry();
             webView.setVisibility(View.GONE);
             loadingLayout.setVisibility(View.VISIBLE);
             progressBar.setVisibility(View.VISIBLE);
@@ -531,7 +554,7 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            runOnUiThread(() -> showErrorState(getString(R.string.offline_msg)));
+            startAutoReconnect("No se pudo conectar al Kiosco");
         });
     }
 
@@ -573,8 +596,8 @@ public class MainActivity extends AppCompatActivity {
         try {
             URL url = new URL(baseUrl + "/api/config");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(1200);
-            conn.setReadTimeout(1200);
+            conn.setConnectTimeout(1500);
+            conn.setReadTimeout(1500);
             conn.setRequestMethod("GET");
             int code = conn.getResponseCode();
             conn.disconnect();
@@ -610,7 +633,11 @@ public class MainActivity extends AppCompatActivity {
                     String contentStr = fileObj.getString("content");
                     JSONObject tunnelData = new JSONObject(contentStr);
                     String tunnelUrl = tunnelData.optString("url", "");
-                    if (tunnelUrl.startsWith("https://")) return tunnelUrl;
+                    if (tunnelUrl.startsWith("https://")) {
+                        if (pingServer(tunnelUrl)) {
+                            return tunnelUrl;
+                        }
+                    }
                 }
             }
             conn.disconnect();
@@ -621,6 +648,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadUrlInApp(String targetUrl, String connectionType) {
+        cancelPendingRetry();
+        isReconnecting = false;
         currentActiveUrl = targetUrl;
         subStatusText.setText(connectionType);
 
@@ -635,11 +664,68 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(finalUrl);
     }
 
-    private void showErrorState(String message) {
-        progressBar.setVisibility(View.GONE);
-        statusText.setText("Sin conexión");
-        subStatusText.setText(message);
-        retryButton.setVisibility(View.VISIBLE);
+    // ── Reconexión Automática Inteligente con Cuenta Regresiva ─────────────────
+    private void startAutoReconnect(String reason) {
+        if (isFinishing() || isDestroyed()) return;
+
+        runOnUiThread(() -> {
+            isReconnecting = true;
+            cancelPendingRetry();
+
+            webView.setVisibility(View.GONE);
+            loadingLayout.setVisibility(View.VISIBLE);
+            progressBar.setVisibility(View.VISIBLE);
+            retryButton.setVisibility(View.VISIBLE);
+            retryButton.setText("Reintentar ahora");
+            statusText.setText("Reconectando con el Kiosco...");
+
+            retryCountdownSeconds = 5;
+            updateRetryUi(reason);
+        });
+    }
+
+    private void updateRetryUi(String reason) {
+        if (!isReconnecting || isFinishing() || isDestroyed()) return;
+
+        if (retryCountdownSeconds > 0) {
+            subStatusText.setText(reason + "\nReintento automático en " + retryCountdownSeconds + " s...");
+            retryRunnable = () -> {
+                retryCountdownSeconds--;
+                updateRetryUi(reason);
+            };
+            retryHandler.postDelayed(retryRunnable, 1000);
+        } else {
+            subStatusText.setText("Buscando nuevo túnel Cloudflare...");
+            resolveAndConnect();
+        }
+    }
+
+    private void cancelPendingRetry() {
+        if (retryRunnable != null) {
+            retryHandler.removeCallbacks(retryRunnable);
+            retryRunnable = null;
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        cancelPendingRetry();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (isReconnecting || webView.getVisibility() != View.VISIBLE) {
+            resolveAndConnect();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        cancelPendingRetry();
+        executor.shutdown();
     }
 
     @Override
