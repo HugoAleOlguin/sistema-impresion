@@ -1,0 +1,27 @@
+R_DEF: Internal format may change without notice
+local
+color backgroundColor
+color cardBackground
+color colorAccent
+color colorPrimary
+color colorPrimaryDark
+color ic_launcher_background
+color textPrimary
+color textSecondary
+id loadingLayout
+id progressBar
+id retryButton
+id statusText
+id subStatusText
+id swipeRefresh
+id webView
+layout activity_main
+mipmap ic_launcher
+mipmap ic_launcher_foreground
+mipmap ic_launcher_round
+string app_name
+string connecting
+string offline_msg
+string retry
+style Theme.ElTato
+xml file_paths

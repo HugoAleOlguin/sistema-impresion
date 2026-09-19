@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="backgroundColor">#0F172A</color>
+    <color name="cardBackground">#1E293B</color>
+    <color name="colorAccent">#38BDF8</color>
+    <color name="colorPrimary">#0284C7</color>
+    <color name="colorPrimaryDark">#0369A1</color>
+    <color name="ic_launcher_background">#0284C7</color>
+    <color name="textPrimary">#F8FAFC</color>
+    <color name="textSecondary">#94A3B8</color>
+    <string name="app_name">El Tato - Impresiones</string>
+    <string name="connecting">Conectando con el Kiosco...</string>
+    <string name="offline_msg">No se pudo conectar al servidor de impresión.\nAsegúrate de que la PC esté encendida.</string>
+    <string name="retry">Reintentar</string>
+    <style name="Theme.ElTato" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="android:windowBackground">@color/backgroundColor</item>
+        <item name="android:statusBarColor">@color/colorPrimaryDark</item>
+        <item name="android:navigationBarColor">@color/backgroundColor</item>
+    </style>
+</resources>
