@@ -505,6 +505,18 @@ public class MainActivity extends AppCompatActivity {
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                android.webkit.ServiceWorkerController swController = android.webkit.ServiceWorkerController.getInstance();
+                swController.setServiceWorkerClient(new android.webkit.ServiceWorkerClient() {
+                    @Override
+                    public WebResourceResponse shouldInterceptRequest(WebResourceRequest request) {
+                        return super.shouldInterceptRequest(request);
+                    }
+                });
+            } catch (Exception ignored) {}
+        }
+
         webView.addJavascriptInterface(new WebAppInterface(), "KioscoNativeApp");
 
         webView.setWebViewClient(new WebViewClient() {
@@ -1377,10 +1389,23 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
+        if (webView != null) {
+            webView.evaluateJavascript(
+                "(typeof window.handleAndroidBack === 'function') ? window.handleAndroidBack() : false",
+                value -> {
+                    if ("true".equals(value)) {
+                        // Modal o visor cerrado por la SPA
+                        return;
+                    }
+                    if (webView.canGoBack()) {
+                        webView.goBack();
+                    } else {
+                        MainActivity.super.onBackPressed();
+                    }
+                }
+            );
+            return;
         }
+        super.onBackPressed();
     }
 }

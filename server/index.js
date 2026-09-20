@@ -150,7 +150,14 @@ app.post('/api/upload', upload.array('documento', 50), async (req, res) => {
     });
   } catch (err) {
     console.error('Error al procesar archivo subido:', err.message);
-    res.status(500).json({ error: err.message });
+    let userMsg = err.message || 'Error al procesar el archivo.';
+    const lower = userMsg.toLowerCase();
+    if (lower.includes('password') || lower.includes('encrypted') || lower.includes('contraseña')) {
+      userMsg = 'El documento tiene contraseña. Por favor, subí una versión sin clave para imprimir.';
+    } else if (lower.includes('invalid pdf') || lower.includes('corrupted') || lower.includes('end-of-file') || lower.includes('failed to parse')) {
+      userMsg = 'El archivo está dañado o incompleto. Intentá descargarlo o guardarlo nuevamente.';
+    }
+    res.status(400).json({ error: userMsg });
   }
 });
 
@@ -301,6 +308,21 @@ function cleanupOldTempFiles() {
 }
 setInterval(cleanupOldTempFiles, 60 * 60 * 1000); // Cada hora
 cleanupOldTempFiles(); // Ejecutar al inicio
+
+// Middleware global para captura de errores (Multer, JSON, etc.)
+app.use((err, req, res, next) => {
+  console.error('Error en middleware global:', err);
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'El archivo excede el tamaño máximo permitido de 50MB.' });
+    }
+    return res.status(400).json({ error: `Error de carga: ${err.message}` });
+  }
+  if (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Error interno del servidor.' });
+  }
+  next();
+});
 
 // Iniciar servidor
 app.listen(PORT, '0.0.0.0', () => {

@@ -13,12 +13,17 @@ const state = {
   currentPhotoFiles: [], // Fotos en memoria si se suben fotos
   currentQuote: null,
   activeJobId: null,
-  isOnline: navigator.onLine
+  isOnline: navigator.onLine,
+  isSubmittingJob: false,
+  isUploading: false,
+  isSavingPrices: false
 };
 
 // Referencias DOM
 const elements = {
   offlineBar: document.getElementById('offlineBar'),
+  offlineBarText: document.getElementById('offlineBarText'),
+  btnReconnectNow: document.getElementById('btnReconnectNow'),
   statusDot: document.getElementById('statusDot'),
   statusBadge: document.getElementById('statusBadge'),
   btnOpenSettings: document.getElementById('btnOpenSettings'),
@@ -92,6 +97,9 @@ const elements = {
   checkoutCard: document.getElementById('checkoutCard'),
   priceAmount: document.getElementById('priceAmount'),
   priceDetails: document.getElementById('priceDetails'),
+  priceBreakdownRow: document.getElementById('priceBreakdownRow'),
+  breakdownSheetsPill: document.getElementById('breakdownSheetsPill'),
+  breakdownRatePill: document.getElementById('breakdownRatePill'),
   btnApprovePrint: document.getElementById('btnApprovePrint'),
   btnApprovePrintText: document.getElementById('btnApprovePrintText'),
   printSpinner: document.getElementById('printSpinner'),
@@ -107,6 +115,9 @@ const elements = {
   btnClosePageSelector: document.getElementById('btnClosePageSelector'),
   btnSelectAllPages: document.getElementById('btnSelectAllPages'),
   btnDeselectAllPages: document.getElementById('btnDeselectAllPages'),
+  btnSelectOddPages: document.getElementById('btnSelectOddPages'),
+  btnSelectEvenPages: document.getElementById('btnSelectEvenPages'),
+  btnInvertSelection: document.getElementById('btnInvertSelection'),
   selectedPagesCountBadge: document.getElementById('selectedPagesCountBadge'),
   pagesGrid: document.getElementById('pagesGrid'),
   btnApplyPageSelection: document.getElementById('btnApplyPageSelection'),
@@ -116,6 +127,8 @@ const elements = {
   pageDetailModal: document.getElementById('pageDetailModal'),
   btnClosePageDetail: document.getElementById('btnClosePageDetail'),
   pageDetailTitle: document.getElementById('pageDetailTitle'),
+  btnDetailZoom: document.getElementById('btnDetailZoom'),
+  detailZoomLabel: document.getElementById('detailZoomLabel'),
   btnToggleDetailSelection: document.getElementById('btnToggleDetailSelection'),
   detailToggleIcon: document.getElementById('detailToggleIcon'),
   detailToggleText: document.getElementById('detailToggleText'),
@@ -152,6 +165,25 @@ const elements = {
   btnCancelDuplexJob: document.getElementById('btnCancelDuplexJob'),
   btnCancelWhilePrinting: document.getElementById('btnCancelWhilePrinting')
 };
+
+// -------------------------------------------------------------
+// COMUNICACIÓN DE RED CON TIMEOUT Y PROTECCIÓN CONTRA CUELGUES
+// -------------------------------------------------------------
+async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timer);
+    return res;
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') {
+      throw new Error(`Tiempo de espera agotado (${Math.round(timeoutMs / 1000)}s) al comunicar con el servidor.`);
+    }
+    throw err;
+  }
+}
 
 // -------------------------------------------------------------
 // SISTEMA HÁPTICO UNIVERSAL (VIBRACIÓN + AUDIO CLIC FÍSICO)
@@ -336,10 +368,19 @@ function setupNetworkListeners() {
 // -------------------------------------------------------------
 async function fetchConfig() {
   try {
-    const res = await fetch('/api/config');
+    const res = await fetchWithTimeout('/api/config', {}, 8000);
     if (!res.ok) throw new Error('Servidor inaccesible');
     const data = await res.json();
     state.config = data.config;
+
+    // Cachear tarifas para cotización offline instantánea
+    if (data.config) {
+      try {
+        localStorage.setItem('kiosco_config_cache', JSON.stringify(data.config));
+      } catch (_) {}
+    }
+
+    if (elements.offlineBar) elements.offlineBar.classList.add('hidden');
 
     if (elements.statusDot && elements.statusBadge) {
       if (data.mockMode) {
@@ -387,8 +428,17 @@ async function fetchConfig() {
     }
   } catch (err) {
     console.error('Error config:', err);
+    if (elements.offlineBar) elements.offlineBar.classList.remove('hidden');
     if (elements.statusDot) elements.statusDot.className = 'status-dot disconnected';
     if (elements.statusBadge) elements.statusBadge.textContent = 'Desconectado';
+
+    // Recuperar configuración cacheada si no había
+    if (!state.config) {
+      try {
+        const cached = localStorage.getItem('kiosco_config_cache');
+        if (cached) state.config = JSON.parse(cached);
+      } catch (_) {}
+    }
   }
 }
 
@@ -533,6 +583,28 @@ function setupEventListeners() {
     }
   });
 
+  // Botón de reconexión rápida en la barra offline
+  on(elements.btnReconnectNow, 'click', async () => {
+    triggerHaptic('tap');
+    if (elements.btnReconnectNow) {
+      elements.btnReconnectNow.textContent = 'Buscando...';
+      elements.btnReconnectNow.disabled = true;
+    }
+    try {
+      await fetchConfig();
+      await fetchRecentJobs(true);
+      if (elements.offlineBar) elements.offlineBar.classList.add('hidden');
+      showInlineNotice('¡Conexión restaurada con la PC!', 'success', 3000);
+    } catch (e) {
+      showInlineNotice('Aún no se puede conectar. Verificá que la PC esté encendida.', 'warning', 4000);
+    } finally {
+      if (elements.btnReconnectNow) {
+        elements.btnReconnectNow.textContent = 'Reconectar';
+        elements.btnReconnectNow.disabled = false;
+      }
+    }
+  });
+
   on(elements.btnClosePageSelector, 'click', () => {
     triggerHaptic('tap');
     if (elements.pageSelectorModal) elements.pageSelectorModal.classList.add('hidden');
@@ -546,6 +618,21 @@ function setupEventListeners() {
   on(elements.btnDeselectAllPages, 'click', () => {
     triggerHaptic('tap');
     toggleAllModalPages(false);
+  });
+
+  on(elements.btnSelectOddPages, 'click', () => {
+    triggerHaptic('tap');
+    toggleOddPages();
+  });
+
+  on(elements.btnSelectEvenPages, 'click', () => {
+    triggerHaptic('tap');
+    toggleEvenPages();
+  });
+
+  on(elements.btnInvertSelection, 'click', () => {
+    triggerHaptic('tap');
+    invertPageSelection();
   });
 
   on(elements.btnApplyPageSelection, 'click', applyPageSelection);
@@ -634,6 +721,11 @@ function setupEventListeners() {
     if (elements.pageDetailModal) elements.pageDetailModal.classList.add('hidden');
   });
 
+  on(elements.btnDetailZoom, 'click', () => {
+    triggerHaptic('tap');
+    toggleDetailZoom();
+  });
+
   on(elements.btnToggleDetailSelection, 'click', toggleDetailSelection);
 
   on(elements.btnDetailPrev, 'click', () => {
@@ -664,6 +756,9 @@ function setupEventListeners() {
     }, { passive: true });
 
     elements.detailCanvasArea.addEventListener('touchend', (e) => {
+      // Si el zoom está activado, permitir que el usuario arrastre la hoja sin cambiar de página
+      if (isDetailZoomed) return;
+
       if (e.changedTouches.length === 1 && pdfDocInstance) {
         const deltaX = e.changedTouches[0].clientX - touchStartX;
         const deltaY = e.changedTouches[0].clientY - touchStartY;
@@ -1001,6 +1096,22 @@ async function uploadFiles(filesInput) {
   const files = Array.from(filesInput);
   if (files.length === 0) return;
 
+  if (state.isUploading) {
+    showInlineNotice('Ya hay una carga en proceso...', 'info');
+    return;
+  }
+
+  // Validación estricta de tamaño de archivo (máx 50MB)
+  const MAX_FILE_SIZE = 50 * 1024 * 1024;
+  for (const f of files) {
+    if (f.size > MAX_FILE_SIZE) {
+      triggerHaptic('warning');
+      showInlineNotice(`El archivo "${f.name}" supera el límite de 50MB. Elegí un archivo más liviano.`, 'warning', 6000);
+      return;
+    }
+  }
+
+  state.isUploading = true;
   triggerHaptic('tap');
   const isMultiple = files.length > 1;
   const initialName = isMultiple ? `${files.length} fotos` : (files[0].name || 'Documento');
@@ -1027,10 +1138,10 @@ async function uploadFiles(filesInput) {
   preparedFiles.forEach(f => formData.append('documento', f));
 
   try {
-    const res = await fetch('/api/upload', {
+    const res = await fetchWithTimeout('/api/upload', {
       method: 'POST',
       body: formData
-    });
+    }, 60000);
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -1049,6 +1160,8 @@ async function uploadFiles(filesInput) {
       : (err.message || 'No se pudo leer el archivo');
     showInlineNotice(msg, 'error', 6000);
     resetCurrentJob();
+  } finally {
+    state.isUploading = false;
   }
 }
 
@@ -1083,34 +1196,19 @@ async function updateQuote() {
     : (state.loadedFile.pageCount || 1);
 
   if (actualPages === 0) {
-    state.currentQuote = {
-      pages: 0,
-      physicalSheets: 0,
-      sheetsPerCopy: 0,
-      copies: state.copies || 1,
-      isColor: state.isColor,
-      isDuplex: false,
-      totalPrice: 0,
-      breakdown: {
-        tipo: 'Ninguna página',
-        paginasPorJuego: 0,
-        hojasFisicasPorJuego: 0,
-        copias: state.copies || 1,
-        hojasFisicasTotales: 0,
-        precioPorJuego: 0,
-        total: 0
-      }
-    };
+    state.currentQuote = null;
     elements.priceAmount.textContent = '0';
     elements.priceDetails.textContent = '0 páginas seleccionadas (marcá al menos 1 para imprimir)';
+    if (elements.priceBreakdownRow) elements.priceBreakdownRow.classList.add('hidden');
     elements.btnApprovePrint.classList.add('is-idle');
     return;
   }
 
   elements.btnApprovePrint.classList.remove('is-idle');
 
+  let quote = null;
   try {
-    const res = await fetch('/api/quote', {
+    const res = await fetchWithTimeout('/api/quote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1119,24 +1217,63 @@ async function updateQuote() {
         isDuplex: state.isDuplex,
         copies: state.copies || 1
       })
-    });
+    }, 4000);
 
-    const quote = await res.json();
-    state.currentQuote = quote;
-
-    elements.priceAmount.textContent = formatDisplayPrice(quote.totalPrice);
-    elements.priceAmount.classList.remove('price-pop');
-    void elements.priceAmount.offsetWidth;
-    elements.priceAmount.classList.add('price-pop');
-
-    const modoTexto = quote.isColor ? 'Color' : 'B&N';
-    const fazTexto = quote.isDuplex ? 'Doble faz' : 'Simple';
-    const hojasLabel = quote.physicalSheets === 1 ? 'hoja física' : 'hojas físicas';
-    const copiasTexto = (quote.copies > 1) ? ` • ${quote.copies} copias` : '';
-
-    elements.priceDetails.textContent = `${quote.physicalSheets} ${hojasLabel} (${actualPages} págs. ${modoTexto} ${fazTexto}${copiasTexto})`;
+    if (res.ok) {
+      quote = await res.json();
+    }
   } catch (err) {
-    console.error('Error cotización:', err);
+    // Si la conexión falla, cotizar offline con tarifas cacheadas
+    console.warn('Cotización online no disponible, usando cálculo local:', err.message);
+  }
+
+  // Fallback offline garantizado
+  if (!quote) {
+    const cfg = state.config || {};
+    let unitRate = 100;
+    if (!state.isColor && !state.isDuplex) unitRate = Number(cfg.bw_simplex) || 100;
+    else if (!state.isColor && state.isDuplex) unitRate = Number(cfg.bw_duplex) || 150;
+    else if (state.isColor && !state.isDuplex) unitRate = Number(cfg.color_simplex) || 200;
+    else if (state.isColor && state.isDuplex) unitRate = Number(cfg.color_duplex) || 250;
+
+    const physicalSheets = state.isDuplex ? Math.ceil(actualPages / 2) : actualPages;
+    const copies = state.copies || 1;
+    quote = {
+      pages: actualPages,
+      physicalSheets,
+      pricePerSheet: unitRate,
+      copies,
+      isColor: state.isColor,
+      isDuplex: state.isDuplex,
+      totalPrice: physicalSheets * unitRate * copies
+    };
+  }
+
+  state.currentQuote = quote;
+
+  elements.priceAmount.textContent = formatDisplayPrice(quote.totalPrice);
+  elements.priceAmount.classList.remove('price-pop');
+  void elements.priceAmount.offsetWidth;
+  elements.priceAmount.classList.add('price-pop');
+
+  const modoTexto = quote.isColor ? 'Color' : 'B&N';
+  const fazTexto = quote.isDuplex ? 'Doble faz' : 'Simple';
+  const hojasLabel = quote.physicalSheets === 1 ? 'hoja física' : 'hojas físicas';
+  const copiasTexto = (quote.copies > 1) ? ` • ${quote.copies} copias` : '';
+
+  elements.priceDetails.textContent = `${quote.physicalSheets} ${hojasLabel} (${actualPages} págs. ${modoTexto} ${fazTexto}${copiasTexto})`;
+
+  // Desglose visual de hojas y tarifa unitaria
+  if (elements.priceBreakdownRow) {
+    elements.priceBreakdownRow.classList.remove('hidden');
+    const totalPhysical = quote.physicalSheets * (quote.copies || 1);
+    if (elements.breakdownSheetsPill) {
+      elements.breakdownSheetsPill.textContent = `${totalPhysical} ${totalPhysical === 1 ? 'hoja física' : 'hojas físicas'}`;
+    }
+    if (elements.breakdownRatePill) {
+      const rate = quote.pricePerSheet || (quote.physicalSheets > 0 ? Math.round(quote.totalPrice / (quote.physicalSheets * (quote.copies || 1))) : 0);
+      elements.breakdownRatePill.textContent = `$${rate} / hoja`;
+    }
   }
 }
 
@@ -1151,6 +1288,7 @@ function resetCurrentJob() {
   elements.btnOpenPageSelector.classList.add('hidden');
   elements.pageSelectorModal.classList.add('hidden');
   elements.pageDetailModal.classList.add('hidden');
+  if (elements.priceBreakdownRow) elements.priceBreakdownRow.classList.add('hidden');
   if (elements.btnAddPhoto) elements.btnAddPhoto.classList.add('hidden');
   if (elements.pagesGrid) {
     elements.pagesGrid.dataset.cachedFileId = '';
@@ -1248,6 +1386,11 @@ async function executeCancel() {
 // IMPRESIÓN Y COLA
 // -------------------------------------------------------------
 async function handleApprovePrint() {
+  if (state.isSubmittingJob) {
+    showInlineNotice('Ya se está procesando la orden...', 'info');
+    return;
+  }
+
   if (!state.loadedFile || !state.currentQuote) {
     triggerHaptic('warning');
     
@@ -1270,6 +1413,7 @@ async function handleApprovePrint() {
     return;
   }
 
+  state.isSubmittingJob = true;
   triggerHaptic('select');
   elements.btnApprovePrint.disabled = true;
   elements.btnCancelJob.disabled = true;
@@ -1287,7 +1431,7 @@ async function handleApprovePrint() {
       ? state.selectedPages.length
       : state.loadedFile.pageCount;
 
-    const createRes = await fetch('/api/jobs', {
+    const createRes = await fetchWithTimeout('/api/jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1299,7 +1443,7 @@ async function handleApprovePrint() {
         isColor: state.isColor,
         isDuplex: state.isDuplex
       })
-    });
+    }, 15000);
 
     if (!createRes.ok) {
       const errData = await createRes.json().catch(() => ({}));
@@ -1310,9 +1454,9 @@ async function handleApprovePrint() {
     const jobId = createData.job.id;
     state.activeJobId = jobId;
 
-    const approveRes = await fetch(`/api/jobs/${jobId}/approve`, {
+    const approveRes = await fetchWithTimeout(`/api/jobs/${jobId}/approve`, {
       method: 'POST'
-    });
+    }, 20000);
 
     if (!approveRes.ok) {
       const errData = await approveRes.json().catch(() => ({}));
@@ -1348,6 +1492,7 @@ async function handleApprovePrint() {
       : (err.message || 'Error al imprimir');
     showInlineNotice(msg, 'error', 6000);
   } finally {
+    state.isSubmittingJob = false;
     hidePrintProgress();
     elements.btnApprovePrint.disabled = false;
     elements.btnCancelJob.disabled = false;
@@ -1372,9 +1517,9 @@ async function handleConfirmDuplex() {
   });
 
   try {
-    const res = await fetch(`/api/jobs/${state.activeJobId}/continue-duplex`, {
+    const res = await fetchWithTimeout(`/api/jobs/${state.activeJobId}/continue-duplex`, {
       method: 'POST'
-    });
+    }, 20000);
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.error || 'Error al imprimir segunda cara');
@@ -1553,16 +1698,28 @@ function escapeHtml(str) {
 }
 
 // -------------------------------------------------------------
-// VISOR Y SELECTOR VISUAL DE PÁGINAS PDF
+// VISOR Y SELECTOR VISUAL DE PÁGINAS PDF (SKELETONS + ZERO LAG)
 // -------------------------------------------------------------
 let modalTempSelectedPages = new Set();
 let pdfDocInstance = null;
+let pageRenderTasks = [];
+
+function cancelPendingPageRenders() {
+  if (Array.isArray(pageRenderTasks)) {
+    pageRenderTasks.forEach(task => {
+      try {
+        if (task && typeof task.cancel === 'function') task.cancel();
+      } catch (_) {}
+    });
+  }
+  pageRenderTasks = [];
+}
 
 async function ensurePdfDoc() {
   if (pdfDocInstance) return pdfDocInstance;
   if (!state.pdfArrayBuffer) {
     if (state.loadedFile && state.loadedFile.pdfUrl) {
-      const pdfRes = await fetch(state.loadedFile.pdfUrl);
+      const pdfRes = await fetchWithTimeout(state.loadedFile.pdfUrl, {}, 15000);
       state.pdfArrayBuffer = await pdfRes.arrayBuffer();
     } else {
       throw new Error('No hay buffer de archivo disponible.');
@@ -1582,6 +1739,8 @@ async function openPageSelector() {
     return;
   }
 
+  cancelPendingPageRenders();
+
   const totalPages = state.loadedFile.pageCount || 1;
   modalTempSelectedPages = new Set(
     Array.isArray(state.selectedPages)
@@ -1591,92 +1750,100 @@ async function openPageSelector() {
 
   updateModalCounter();
 
-  // Si ya están cacheadas las miniaturas para este mismo archivo, abrir instantáneamente sin re-renderizar
+  // Si ya están cacheadas las miniaturas para este mismo archivo, abrir instantáneamente en 0ms
   const currentFileId = state.loadedFile.fileId || state.loadedFile.pdfPath || '';
   if (currentFileId && elements.pagesGrid.dataset.cachedFileId === currentFileId) {
-    for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-      const card = document.getElementById(`thumb-page-${pageNum}`);
-      if (card) {
-        card.classList.toggle('is-excluded', !modalTempSelectedPages.has(pageNum));
-        const statusPill = card.querySelector('.page-status-pill');
-        if (statusPill) {
-          statusPill.textContent = modalTempSelectedPages.has(pageNum) ? '✓ Lista' : '✕ Excluida';
-        }
-      }
-    }
+    syncModalThumbCards(totalPages);
     elements.pageSelectorModal.classList.remove('hidden');
     return;
   }
 
+  // 1. Mostrar inmediatamente el modal con Skeletons Shimmer (CERO retraso visual)
   elements.pageSelectorModal.classList.remove('hidden');
-  elements.pagesGrid.innerHTML = `
-    <div class="loading-pages">
-      <span class="spinner" style="border-top-color: var(--color-blue); border-color: #cbd5e1;"></span>
-      <p>Generando vista previa de las hojas...</p>
-    </div>
-  `;
+  elements.pagesGrid.innerHTML = '';
+
+  const skeletonFrag = document.createDocumentFragment();
+  for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+    const card = document.createElement('div');
+    card.className = `page-thumb-card is-skeleton ${modalTempSelectedPages.has(pageNum) ? '' : 'is-excluded'}`;
+    card.id = `thumb-page-${pageNum}`;
+    card.setAttribute('data-page', pageNum);
+
+    const canvasWrapper = document.createElement('div');
+    canvasWrapper.className = 'page-canvas-wrapper';
+
+    const footer = document.createElement('div');
+    footer.className = 'page-thumb-footer';
+    footer.innerHTML = `
+      <span class="page-num-label">Pág. ${pageNum}</span>
+      <div class="thumb-footer-btns">
+        <span class="page-status-pill">${modalTempSelectedPages.has(pageNum) ? '✓ Lista' : '✕ Excluida'}</span>
+      </div>
+    `;
+
+    card.appendChild(canvasWrapper);
+    card.appendChild(footer);
+    skeletonFrag.appendChild(card);
+  }
+  elements.pagesGrid.appendChild(skeletonFrag);
 
   try {
     const pdf = await ensurePdfDoc();
-    elements.pagesGrid.innerHTML = '';
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
+      const card = document.getElementById(`thumb-page-${pageNum}`);
+      if (!card) continue;
 
+      const page = await pdf.getPage(pageNum);
       const unscaledViewport = page.getViewport({ scale: 1 });
       const scale = 150 / unscaledViewport.width;
       const viewport = page.getViewport({ scale });
 
-      const card = document.createElement('div');
-      card.className = `page-thumb-card ${modalTempSelectedPages.has(pageNum) ? '' : 'is-excluded'}`;
-      card.id = `thumb-page-${pageNum}`;
-      card.setAttribute('data-page', pageNum);
-
-      const canvasWrapper = document.createElement('div');
-      canvasWrapper.className = 'page-canvas-wrapper';
+      const canvasWrapper = card.querySelector('.page-canvas-wrapper');
+      canvasWrapper.innerHTML = '';
 
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       const context = canvas.getContext('2d');
-
       canvasWrapper.appendChild(canvas);
 
-      const footer = document.createElement('div');
-      footer.className = 'page-thumb-footer';
-      footer.innerHTML = `
-        <span class="page-num-label">Pág. ${pageNum}</span>
-        <div class="thumb-footer-btns">
-          <button type="button" class="btn-thumb-inspect" data-page="${pageNum}" title="Ver hoja en detalle">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <span>Ver</span>
-          </button>
-          <span class="page-status-pill">${modalTempSelectedPages.has(pageNum) ? '✓ Lista' : '✕ Excluida'}</span>
-        </div>
-      `;
+      const footer = card.querySelector('.page-thumb-footer');
+      if (footer) {
+        footer.innerHTML = `
+          <span class="page-num-label">Pág. ${pageNum}</span>
+          <div class="thumb-footer-btns">
+            <button type="button" class="btn-thumb-inspect" data-page="${pageNum}" title="Ver hoja en detalle">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <span>Ver</span>
+            </button>
+            <span class="page-status-pill">${modalTempSelectedPages.has(pageNum) ? '✓ Lista' : '✕ Excluida'}</span>
+          </div>
+        `;
 
-      const btnInspect = footer.querySelector('.btn-thumb-inspect');
-      btnInspect.addEventListener('click', (e) => {
-        e.stopPropagation();
-        triggerHaptic('tap');
-        openPageDetail(pageNum);
-      });
-
-      card.appendChild(canvasWrapper);
-      card.appendChild(footer);
+        const btnInspect = footer.querySelector('.btn-thumb-inspect');
+        if (btnInspect) {
+          btnInspect.addEventListener('click', (e) => {
+            e.stopPropagation();
+            triggerHaptic('tap');
+            openPageDetail(pageNum);
+          });
+        }
+      }
 
       card.addEventListener('click', () => {
         triggerHaptic('tap');
         toggleModalPage(pageNum);
       });
 
-      elements.pagesGrid.appendChild(card);
+      // Quitar skeleton y animar suavemente
+      card.classList.remove('is-skeleton');
 
-      // Renderizar la miniatura en el canvas
-      page.render({ canvasContext: context, viewport });
+      const renderTask = page.render({ canvasContext: context, viewport });
+      pageRenderTasks.push(renderTask);
     }
 
     // Si es imagen, añadir tarjeta al final para sumar otra foto
@@ -1704,11 +1871,13 @@ async function openPageSelector() {
     elements.pagesGrid.dataset.cachedFileId = currentFileId;
   } catch (err) {
     console.error('Error renderizando miniaturas:', err);
-    elements.pagesGrid.innerHTML = `
-      <div class="loading-pages">
-        <p style="color: #b91c1c;">No se pudieron generar las miniaturas visuales.</p>
-      </div>
-    `;
+    if (!elements.pagesGrid.querySelector('canvas')) {
+      elements.pagesGrid.innerHTML = `
+        <div class="loading-pages">
+          <p style="color: #b91c1c;">No se pudieron generar las miniaturas visuales.</p>
+        </div>
+      `;
+    }
   }
 }
 
@@ -1740,11 +1909,79 @@ function toggleModalPage(pageNum) {
   updateModalCounter();
 }
 
+function toggleOddPages() {
+  if (!state.loadedFile) return;
+  const total = state.loadedFile.pageCount || 1;
+  modalTempSelectedPages.clear();
+  for (let i = 1; i <= total; i++) {
+    if (i % 2 !== 0) modalTempSelectedPages.add(i);
+  }
+  syncModalThumbCards(total);
+  updateModalCounter();
+}
+
+function toggleEvenPages() {
+  if (!state.loadedFile) return;
+  const total = state.loadedFile.pageCount || 1;
+  modalTempSelectedPages.clear();
+  for (let i = 1; i <= total; i++) {
+    if (i % 2 === 0) modalTempSelectedPages.add(i);
+  }
+  syncModalThumbCards(total);
+  updateModalCounter();
+}
+
+function invertPageSelection() {
+  if (!state.loadedFile) return;
+  const total = state.loadedFile.pageCount || 1;
+  for (let i = 1; i <= total; i++) {
+    if (modalTempSelectedPages.has(i)) {
+      modalTempSelectedPages.delete(i);
+    } else {
+      modalTempSelectedPages.add(i);
+    }
+  }
+  syncModalThumbCards(total);
+  updateModalCounter();
+}
+
+function syncModalThumbCards(total) {
+  for (let i = 1; i <= total; i++) {
+    const card = document.getElementById(`thumb-page-${i}`);
+    if (card) {
+      const isSelected = modalTempSelectedPages.has(i);
+      card.classList.toggle('is-excluded', !isSelected);
+      const pill = card.querySelector('.page-status-pill');
+      if (pill) {
+        pill.textContent = isSelected ? '✓ Lista' : '✕ Excluida';
+      }
+    }
+  }
+}
+
 // -------------------------------------------------------------
-// VISOR DE HOJA EN DETALLE (SENSACIÓN NATIVA MÓVIL)
+// VISOR DE HOJA EN DETALLE (SENSACIÓN NATIVA MÓVIL + ZOOM)
 // -------------------------------------------------------------
 let currentDetailPage = 1;
 let isRenderingDetail = false;
+let isDetailZoomed = false;
+
+function toggleDetailZoom() {
+  isDetailZoomed = !isDetailZoomed;
+  if (elements.detailCanvasArea) {
+    elements.detailCanvasArea.classList.toggle('is-zoomed', isDetailZoomed);
+  }
+  const wrapper = elements.detailCanvasArea ? elements.detailCanvasArea.querySelector('.detail-canvas-wrapper') : null;
+  if (wrapper) {
+    wrapper.classList.toggle('is-zoomed', isDetailZoomed);
+  }
+  if (elements.btnDetailZoom) {
+    elements.btnDetailZoom.classList.toggle('active', isDetailZoomed);
+  }
+  if (elements.detailZoomLabel) {
+    elements.detailZoomLabel.textContent = isDetailZoomed ? '1x' : 'Zoom';
+  }
+}
 
 async function openPageDetail(pageNum) {
   try {
@@ -1763,6 +2000,14 @@ async function openPageDetail(pageNum) {
         : Array.from({ length: totalPages }, (_, i) => i + 1)
     );
   }
+
+  // Reset zoom al abrir
+  isDetailZoomed = false;
+  if (elements.detailCanvasArea) elements.detailCanvasArea.classList.remove('is-zoomed');
+  const wrapper = elements.detailCanvasArea ? elements.detailCanvasArea.querySelector('.detail-canvas-wrapper') : null;
+  if (wrapper) wrapper.classList.remove('is-zoomed');
+  if (elements.btnDetailZoom) elements.btnDetailZoom.classList.remove('active');
+  if (elements.detailZoomLabel) elements.detailZoomLabel.textContent = 'Zoom';
 
   currentDetailPage = pageNum;
   elements.pageDetailModal.classList.remove('hidden');
@@ -1843,18 +2088,7 @@ function toggleAllModalPages(selectAll) {
     modalTempSelectedPages.clear();
   }
 
-  for (let i = 1; i <= total; i++) {
-    const card = document.getElementById(`thumb-page-${i}`);
-    if (card) {
-      const isSelected = modalTempSelectedPages.has(i);
-      card.classList.toggle('is-excluded', !isSelected);
-      const pill = card.querySelector('.page-status-pill');
-      if (pill) {
-        pill.textContent = isSelected ? '✓ Lista' : '✕ Excluida';
-      }
-    }
-  }
-
+  syncModalThumbCards(total);
   updateModalCounter();
 }
 
@@ -2055,4 +2289,50 @@ if (window.KioscoNativeApp && typeof window.KioscoNativeApp.getPendingSharedResu
     console.error('Error al procesar pendingSharedResult en startup:', e);
   }
 }
+
+// -------------------------------------------------------------
+// PUENTE NATIVO: BOTÓN FÍSICO ATRÁS EN ANDROID (EXPERIENCIA NATIVA)
+// -------------------------------------------------------------
+window.handleAndroidBack = function() {
+  // 1. Visor de detalle
+  if (elements.pageDetailModal && !elements.pageDetailModal.classList.contains('hidden')) {
+    elements.pageDetailModal.classList.add('hidden');
+    return true;
+  }
+  // 2. Selector de páginas
+  if (elements.pageSelectorModal && !elements.pageSelectorModal.classList.contains('hidden')) {
+    elements.pageSelectorModal.classList.add('hidden');
+    return true;
+  }
+  // 3. Modal confirmación de cancelación
+  if (elements.confirmCancelModal && !elements.confirmCancelModal.classList.contains('hidden')) {
+    abortCancel();
+    return true;
+  }
+  // 4. Modal de configuración
+  if (elements.settingsModal && !elements.settingsModal.classList.contains('hidden')) {
+    elements.settingsModal.classList.add('hidden');
+    return true;
+  }
+  // 5. Modal de cambiar archivo / agregar foto
+  if (elements.changeFileModal && !elements.changeFileModal.classList.contains('hidden')) {
+    elements.changeFileModal.classList.add('hidden');
+    return true;
+  }
+  if (elements.addPhotoModal && !elements.addPhotoModal.classList.contains('hidden')) {
+    elements.addPhotoModal.classList.add('hidden');
+    return true;
+  }
+  // 6. Drawer de historial
+  if (elements.historyDrawer && !elements.historyDrawer.classList.contains('hidden')) {
+    elements.historyDrawer.classList.add('hidden');
+    return true;
+  }
+  // 7. Modal de dúplex
+  if (elements.duplexModal && !elements.duplexModal.classList.contains('hidden')) {
+    elements.duplexModal.classList.add('hidden');
+    return true;
+  }
+  return false;
+};
 
