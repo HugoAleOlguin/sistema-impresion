@@ -401,6 +401,18 @@ function on(el, event, handler, options) {
 }
 
 function setupEventListeners() {
+  // Toque en estado de conexión para reintentar / comprobar
+  const statusChip = document.querySelector('.status-chip');
+  if (statusChip) {
+    statusChip.style.cursor = 'pointer';
+    on(statusChip, 'click', () => {
+      triggerHaptic('tap');
+      showInlineNotice('Comprobando conexión con el mostrador...', 'info', 2000);
+      fetchConfig();
+      fetchRecentJobs(true);
+    });
+  }
+
   // Botón único de carga (Paso 1) — abre el selector nativo del sistema
   on(elements.btnTriggerAll, 'click', (e) => {
     e.stopPropagation();
@@ -1021,7 +1033,7 @@ async function uploadFiles(filesInput) {
     });
 
     if (!res.ok) {
-      const errData = await res.json();
+      const errData = await res.json().catch(() => ({}));
       throw new Error(errData.error || 'Error al procesar el archivo');
     }
 
@@ -1031,7 +1043,11 @@ async function uploadFiles(filesInput) {
     hideUploadProgress();
     console.error('Error al subir:', err);
     triggerHaptic('warning');
-    showInlineNotice(err.message || 'No se pudo leer el archivo', 'error');
+    const isNetwork = !navigator.onLine || err.name === 'TypeError' || String(err).includes('fetch') || String(err).includes('NetworkError');
+    const msg = isNetwork
+      ? '⚠️ Sin conexión con la computadora del Kiosco. Verificá que la PC esté encendida.'
+      : (err.message || 'No se pudo leer el archivo');
+    showInlineNotice(msg, 'error', 6000);
     resetCurrentJob();
   }
 }
@@ -1285,6 +1301,11 @@ async function handleApprovePrint() {
       })
     });
 
+    if (!createRes.ok) {
+      const errData = await createRes.json().catch(() => ({}));
+      throw new Error(errData.error || `Error (${createRes.status}) al crear orden`);
+    }
+
     const createData = await createRes.json();
     const jobId = createData.job.id;
     state.activeJobId = jobId;
@@ -1292,6 +1313,12 @@ async function handleApprovePrint() {
     const approveRes = await fetch(`/api/jobs/${jobId}/approve`, {
       method: 'POST'
     });
+
+    if (!approveRes.ok) {
+      const errData = await approveRes.json().catch(() => ({}));
+      throw new Error(errData.error || `Error (${approveRes.status}) al autorizar impresión`);
+    }
+
     const approveData = await approveRes.json();
     const job = approveData.job;
 
@@ -1315,7 +1342,11 @@ async function handleApprovePrint() {
     hidePrintProgress();
     console.error('Error impresión:', err);
     triggerHaptic('warning');
-    showInlineNotice(err.message || 'Error al imprimir', 'error');
+    const isNetwork = !navigator.onLine || err.name === 'TypeError' || String(err).includes('fetch') || String(err).includes('NetworkError');
+    const msg = isNetwork
+      ? '⚠️ Sin conexión con la computadora del Kiosco. Verificá que la PC esté encendida.'
+      : (err.message || 'Error al imprimir');
+    showInlineNotice(msg, 'error', 6000);
   } finally {
     hidePrintProgress();
     elements.btnApprovePrint.disabled = false;
@@ -1344,6 +1375,10 @@ async function handleConfirmDuplex() {
     const res = await fetch(`/api/jobs/${state.activeJobId}/continue-duplex`, {
       method: 'POST'
     });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Error al imprimir segunda cara');
+    }
     const data = await res.json();
 
     if (data.success && data.job.status === 'completed') {
@@ -1360,7 +1395,11 @@ async function handleConfirmDuplex() {
     hidePrintProgress();
     console.error('Error continuar doble faz:', err);
     triggerHaptic('warning');
-    showInlineNotice(err.message || 'Error de impresión', 'error');
+    const isNetwork = !navigator.onLine || err.name === 'TypeError' || String(err).includes('fetch') || String(err).includes('NetworkError');
+    const msg = isNetwork
+      ? '⚠️ Sin conexión con la computadora del Kiosco. Verificá que la PC esté encendida.'
+      : (err.message || 'Error de impresión');
+    showInlineNotice(msg, 'error', 6000);
   } finally {
     hidePrintProgress();
     elements.btnConfirmDuplex.disabled = false;
@@ -2003,4 +2042,17 @@ window.onSharedFileUploaded = async function(data) {
     showInlineNotice('Error al preparar el documento para impresión', 'error');
   }
 };
+
+// Chequeo inmediato si la app nativa ya subió un archivo compartido antes de cargar app.js
+if (window.KioscoNativeApp && typeof window.KioscoNativeApp.getPendingSharedResult === 'function') {
+  try {
+    const pendingJson = window.KioscoNativeApp.getPendingSharedResult();
+    if (pendingJson && pendingJson.trim().length > 0) {
+      const parsed = JSON.parse(pendingJson);
+      window.onSharedFileUploaded(parsed);
+    }
+  } catch (e) {
+    console.error('Error al procesar pendingSharedResult en startup:', e);
+  }
+}
 

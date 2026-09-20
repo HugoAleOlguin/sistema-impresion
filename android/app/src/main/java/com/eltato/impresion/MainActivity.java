@@ -102,11 +102,7 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private SwipeRefreshLayout swipeRefresh;
-    private LinearLayout loadingLayout;
-    private ProgressBar progressBar;
-    private TextView statusText;
-    private TextView subStatusText;
-    private Button retryButton;
+    private volatile String pendingSharedResultJson = null;
 
     private String gistId = "b54b662325e0b7066773fc7debc574b6";
     private String kioscoSecret = "eltato_1cfb4fdb4212d591808c821f88c6d2a4";
@@ -124,6 +120,13 @@ public class MainActivity extends AppCompatActivity {
         @android.webkit.JavascriptInterface
         public void notifyTheme(String theme) {
             runOnUiThread(() -> isDarkMode = "dark".equalsIgnoreCase(theme));
+        }
+
+        @android.webkit.JavascriptInterface
+        public String getPendingSharedResult() {
+            String result = pendingSharedResultJson;
+            pendingSharedResultJson = null;
+            return result;
         }
     }
 
@@ -228,23 +231,12 @@ public class MainActivity extends AppCompatActivity {
 
         webView = findViewById(R.id.webView);
         swipeRefresh = findViewById(R.id.swipeRefresh);
-        loadingLayout = findViewById(R.id.loadingLayout);
-        progressBar = findViewById(R.id.progressBar);
-        statusText = findViewById(R.id.statusText);
-        subStatusText = findViewById(R.id.subStatusText);
-        retryButton = findViewById(R.id.retryButton);
 
         // ── Deshabilitar SwipeRefresh: la app debe sentirse nativa, no recargarse ──
         swipeRefresh.setEnabled(false);
 
         loadAppConfig();
         setupWebView();
-
-        retryButton.setOnClickListener(v -> {
-            cancelPendingRetry();
-            connectionSessionStartTime = System.currentTimeMillis();
-            startConnectionFlow(true);
-        });
 
         handleShareIntent(getIntent());
 
@@ -254,12 +246,15 @@ public class MainActivity extends AppCompatActivity {
 
         if (cachedUrl != null && !cachedUrl.isEmpty()) {
             currentActiveUrl = cachedUrl;
-            loadingLayout.setVisibility(View.GONE);
-            webView.setVisibility(View.VISIBLE);
-            loadUrlInApp(cachedUrl, "");
+            loadUrlInApp(cachedUrl);
         } else {
-            startConnectionFlow(false);
+            String fallbackUrl = "http://" + defaultLanIp + ":" + localPort;
+            currentActiveUrl = fallbackUrl;
+            loadUrlInApp(fallbackUrl);
         }
+
+        // Conexión y chequeo en segundo plano
+        startConnectionFlow(false);
     }
 
     // ── BottomSheet nativo con opciones dinámicas y Modo Oscuro ──────────────
@@ -530,9 +525,7 @@ public class MainActivity extends AppCompatActivity {
                             .apply();
                 }
 
-                loadingLayout.setVisibility(View.GONE);
-                webView.setVisibility(View.VISIBLE);
-
+                deliverPendingSharedResultIfReady();
                 triggerPendingSharedUpload();
             }
 
@@ -666,24 +659,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void startLogoPulse() {
-        View logo = findViewById(R.id.logoContainer);
-        if (logo == null) return;
-        logo.animate()
-                .scaleX(1.06f)
-                .scaleY(1.06f)
-                .setDuration(750)
-                .withEndAction(() -> {
-                    if (!isFinishing() && !isDestroyed()) {
-                        logo.animate()
-                                .scaleX(1.0f)
-                                .scaleY(1.0f)
-                                .setDuration(750)
-                                .withEndAction(this::startLogoPulse);
-                    }
-                });
-    }
-
     // ── Normalización de URL al origen (scheme://host:port) ─────────────────────
     private String extractOrigin(String urlStr) {
         if (urlStr == null || urlStr.trim().isEmpty()) return "";
@@ -731,21 +706,6 @@ public class MainActivity extends AppCompatActivity {
             connectionSessionStartTime = System.currentTimeMillis();
         }
 
-        runOnUiThread(() -> {
-            SharedPreferences p = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-            String savedUrl = p.getString(KEY_CACHED_URL, null);
-            if (savedUrl == null || savedUrl.isEmpty()) {
-                webView.setVisibility(View.GONE);
-                loadingLayout.setAlpha(1f);
-                loadingLayout.setVisibility(View.VISIBLE);
-                progressBar.setVisibility(View.VISIBLE);
-                retryButton.setVisibility(View.GONE);
-                statusText.setText("Iniciando...");
-                subStatusText.setText("Conectando al mostrador");
-                startLogoPulse();
-            }
-        });
-
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         String rawCachedUrl = prefs.getString(KEY_CACHED_URL, null);
         String cachedUrl = extractOrigin(rawCachedUrl);
@@ -761,7 +721,7 @@ public class MainActivity extends AppCompatActivity {
                 if (resolutionCounter.get() != resId || connectionResolved.get()) return;
                 int timeout = fastUrl.startsWith("http://192.168.") ? 1000 : 2500;
                 if (pingCandidate(fastUrl, timeout)) {
-                    onCandidateWon(fastUrl, "Sesión restaurada al instante", resId);
+                    onCandidateWon(fastUrl, resId);
                 }
             });
         }
@@ -795,7 +755,7 @@ public class MainActivity extends AppCompatActivity {
             tasks.add(() -> {
                 if (resolutionCounter.get() != resId || connectionResolved.get()) return;
                 if (pingCandidate(lanUrl, 1200)) {
-                    onCandidateWon(lanUrl, "Conectado por Wi-Fi Local (Alta Velocidad)", resId);
+                    onCandidateWon(lanUrl, resId);
                 }
             });
         }
@@ -809,7 +769,7 @@ public class MainActivity extends AppCompatActivity {
                 if (info.lanIp != null && !info.lanIp.isEmpty() && !lanCandidates.contains(info.lanIp)) {
                     String gistLan = "http://" + info.lanIp + ":" + localPort;
                     if (!connectionResolved.get() && pingCandidate(gistLan, 1200)) {
-                        onCandidateWon(gistLan, "Conectado por Wi-Fi Local (Detectado por nube)", resId);
+                        onCandidateWon(gistLan, resId);
                         return;
                     }
                 }
@@ -818,7 +778,7 @@ public class MainActivity extends AppCompatActivity {
                 if (info.url != null && info.url.startsWith("https://") && !connectionResolved.get()) {
                     String cleanTunnel = extractOrigin(info.url);
                     if (pingCandidate(cleanTunnel, 3500)) {
-                        onCandidateWon(cleanTunnel, "Conectado mediante Túnel Remoto", resId);
+                        onCandidateWon(cleanTunnel, resId);
                     }
                 }
             }
@@ -839,7 +799,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void onCandidateWon(String targetUrl, String connectionType, int resId) {
+    private void onCandidateWon(String targetUrl, int resId) {
         if (resolutionCounter.get() != resId) return;
         if (connectionResolved.compareAndSet(false, true)) {
             String origin = extractOrigin(targetUrl);
@@ -858,7 +818,8 @@ public class MainActivity extends AppCompatActivity {
 
             runOnUiThread(() -> {
                 if (resolutionCounter.get() == resId) {
-                    loadUrlInApp(origin, connectionType);
+                    loadUrlInApp(origin);
+                    deliverPendingSharedResultIfReady();
                     triggerPendingSharedUpload();
                 }
             });
@@ -872,18 +833,13 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     if (resolutionCounter.get() == resId && !connectionResolved.get()) {
                         long elapsed = System.currentTimeMillis() - connectionSessionStartTime;
-                        if (elapsed < MAX_SILENT_DISCOVERY_MS) {
-                            // Reintento silencioso en segundo plano sin molestar al usuario ni mostrar avisos
-                            retryRunnable = () -> {
-                                if (resolutionCounter.get() == resId && !connectionResolved.get()) {
-                                    startConnectionFlow(true);
-                                }
-                            };
-                            retryHandler.postDelayed(retryRunnable, 700);
-                        } else {
-                            // Más de 12 segundos sin respuesta: mostrar estado offline amigable
-                            showOfflineState();
-                        }
+                        long delay = (elapsed < MAX_SILENT_DISCOVERY_MS) ? 1000L : 6000L;
+                        retryRunnable = () -> {
+                            if (resolutionCounter.get() == resId && !connectionResolved.get()) {
+                                startConnectionFlow(true);
+                            }
+                        };
+                        retryHandler.postDelayed(retryRunnable, delay);
                     }
                 });
             }
@@ -1066,11 +1022,11 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void loadUrlInApp(String targetUrl, String connectionType) {
+    private void loadUrlInApp(String targetUrl) {
         cancelPendingRetry();
         String origin = extractOrigin(targetUrl);
+        if (origin.isEmpty()) return;
         currentActiveUrl = origin;
-        subStatusText.setText(connectionType);
 
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setCookie(origin, "kiosco_auth=" + kioscoSecret + "; Path=/; SameSite=Lax");
@@ -1080,25 +1036,13 @@ public class MainActivity extends AppCompatActivity {
         if (!finalUrl.contains("token=")) {
             finalUrl = finalUrl + "/?token=" + kioscoSecret;
         }
+
+        String currentWebUrl = (webView != null && webView.getUrl() != null) ? extractOrigin(webView.getUrl()) : "";
+        if (isConnectionActive && currentWebUrl.equals(origin)) {
+            return;
+        }
+
         webView.loadUrl(finalUrl);
-    }
-
-    // ── Estado fuera de línea sutil (sólo tras 12s de búsqueda silenciosa) ──────
-    private void showOfflineState() {
-        if (isFinishing() || isDestroyed()) return;
-
-        runOnUiThread(() -> {
-            isResolvingConnection = false;
-            cancelPendingRetry();
-
-            webView.setVisibility(View.GONE);
-            loadingLayout.setVisibility(View.VISIBLE);
-            progressBar.setVisibility(View.GONE);
-            retryButton.setVisibility(View.VISIBLE);
-            retryButton.setText("Reintentar conexión");
-            statusText.setText("Sin conexión con el mostrador");
-            subStatusText.setText("Verificá que la PC esté encendida o que el teléfono tenga internet.");
-        });
     }
 
     private void cancelPendingRetry() {
@@ -1368,18 +1312,14 @@ public class MainActivity extends AppCompatActivity {
                     reader.close();
 
                     final String responseJson = sb.toString();
+                    pendingSharedResultJson = responseJson;
 
                     for (File f : filesToUpload) {
                         try { f.delete(); } catch (Exception ignored) {}
                     }
                     pendingSharedFiles.removeAll(filesToUpload);
 
-                    runOnUiThread(() -> {
-                        webView.evaluateJavascript(
-                            "if (typeof window.onSharedFileUploaded === 'function') { window.onSharedFileUploaded(" + responseJson + "); }",
-                            null
-                        );
-                    });
+                    deliverPendingSharedResultIfReady();
                 } else {
                     runOnUiThread(() -> {
                         webView.evaluateJavascript(
@@ -1396,12 +1336,30 @@ public class MainActivity extends AppCompatActivity {
                         null
                     );
                 });
+                startConnectionFlow(true);
             } finally {
                 isUploadingShared.set(false);
                 if (conn != null) {
                     try { conn.disconnect(); } catch (Exception ignored) {}
                 }
             }
+        });
+    }
+
+    private void deliverPendingSharedResultIfReady() {
+        if (pendingSharedResultJson == null || webView == null) return;
+        runOnUiThread(() -> {
+            if (pendingSharedResultJson == null) return;
+            webView.evaluateJavascript(
+                "(typeof window.onSharedFileUploaded === 'function')",
+                value -> {
+                    if ("true".equals(value) && pendingSharedResultJson != null) {
+                        String json = pendingSharedResultJson;
+                        pendingSharedResultJson = null;
+                        webView.evaluateJavascript("window.onSharedFileUploaded(" + json + ");", null);
+                    }
+                }
+            );
         });
     }
 

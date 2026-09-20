@@ -3088,7 +3088,6 @@ id all
 id always
 id animateToEnd
 id animateToStart
-id appLogo
 id arc
 id asConfigured
 id async
@@ -3103,8 +3102,6 @@ id beginning
 id blocking
 id bottom
 id bounce
-id brandTagline
-id brandTitle
 id buttonPanel
 id cancel_button
 id center
@@ -3230,8 +3227,6 @@ id line3
 id linear
 id listMode
 id list_item
-id loadingLayout
-id logoContainer
 id m3_side_sheet
 id marquee
 id masked
@@ -3338,14 +3333,12 @@ id pin
 id position
 id postLayout
 id pressed
-id progressBar
 id progress_circular
 id progress_horizontal
 id radio
 id ratio
 id rectangles
 id report_drawn
-id retryButton
 id reverseSawtooth
 id right
 id rightToLeft
@@ -3404,10 +3397,8 @@ id startToEnd
 id startVertical
 id staticLayout
 id staticPostLayout
-id statusText
 id stop
 id stretch
-id subStatusText
 id submenuarrow
 id submit_area
 id swipeRefresh
